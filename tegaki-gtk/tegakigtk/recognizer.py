@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2009 Mathieu Blondel
+# Copyright (C) 2009 The Tegaki project contributors
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,6 +16,9 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+# Contributors to this file:
+# - Mathieu Blondel
+
 import os
 from ConfigParser import SafeConfigParser, NoSectionError, NoOptionError
 
@@ -29,6 +32,8 @@ from chartable import CharTable
 from tegaki.recognizer import Recognizer
 
 class RecognizerWidgetBase(gtk.HBox):
+
+    DEFAULT_CANVAS_WIDTH = 250
 
     __gsignals__ = {
 
@@ -119,7 +124,8 @@ class RecognizerWidgetBase(gtk.HBox):
 
     def _create_canvas(self, canvas_name):
         canvas = Canvas()
-        canvas.set_size_request(250, 250)
+        canvas.set_size_request(self.DEFAULT_CANVAS_WIDTH,
+                                self.DEFAULT_CANVAS_WIDTH)
 
         canvas.connect("button-press-event",
                        self._on_canvas_button_press,
@@ -226,6 +232,8 @@ class RecognizerWidgetBase(gtk.HBox):
         except IndexError:
             self._ready = False
 
+    def get_toolbar_vbox(self):
+        return self._toolbar
 
 class SimpleRecognizerWidget(RecognizerWidgetBase):
 
@@ -283,7 +291,7 @@ class SimpleRecognizerWidget(RecognizerWidgetBase):
         self._chartable.clear() 
 
     def get_drawing_stopped_time(self):
-        self._canvas.get_drawing_stopped_time()
+        return self._canvas.get_drawing_stopped_time()
 
     def set_drawing_stopped_time(self, time_msec):
         self._search_on_stroke = False
@@ -301,7 +309,7 @@ class SimpleRecognizerWidget(RecognizerWidgetBase):
         writing = self._canvas.get_writing()
 
         if writing.get_n_strokes() > 0:
-            candidates = self._recognizer.recognize(writing)
+            candidates = self._recognizer.recognize(writing, n=9)
             candidates = [char for char, prob in candidates]
             self._chartable.set_characters(candidates)
 
@@ -380,8 +388,8 @@ class SmartRecognizerWidget(RecognizerWidgetBase):
         if candidates:
             candidate_list = CandidateList(candidates)
 
-            if self._search_on_stroke and canvas == self._last_completed_canvas:
-                # update the current character if search on stroke activated
+            if canvas == self._last_completed_canvas:
+                # update the current character if the same canvas was used
                 last = len(self.get_characters()) - 1
                 self.replace_character(last, candidate_list)
                 self._writings[last] = writing
@@ -592,7 +600,8 @@ class CandidatePopup(gtk.Window):
         self._chartable.add_events(gdk.BUTTON_PRESS_MASK)
         self._chartable.set_characters(self._candidates)
         self._chartable.set_layout(CharTable.LAYOUT_HORIZONTAL)
-        self._chartable.set_size_request(100, 110)
+        max_width, max_height = self._chartable.get_max_char_size()
+        self._chartable.set_size_request(max_width*3, max_height*3)
         frame.add(self._chartable)
 
         self.connect("button-press-event", self._on_button_press)

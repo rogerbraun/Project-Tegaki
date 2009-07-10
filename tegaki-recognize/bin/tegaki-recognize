@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2009 Mathieu Blondel
+# Copyright (C) 2009 The Tegaki project contributors
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,13 +17,18 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+# Contributors to this file:
+# - Mathieu Blondel
+
 import base64
 from optparse import OptionParser
 
 import gtk
 from gtk import gdk
 
-from tegakigtk.recognizer import SmartRecognizerWidget
+from tegakigtk.recognizer import SmartRecognizerWidget, SimpleRecognizerWidget
+
+VERSION = '0.2'
 
 ICON = \
 """iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAAyUlE
@@ -34,9 +39,11 @@ MFyDekWegYHhv7+j6H+kaCM6QS2GGkSSxiEKAPRgTUcK1FgfAAAAAElFTkSuQmCC"""
 
 class TegakiRecognize(object):
 
-    def __init__(self, hide):
+    def __init__(self, options):
         self._position = None
-        self._hide = hide
+        self._hide = options.hide
+        self._simple = options.simple
+        self._dont_quit = options.dont_quit
         self._init_icon()
         self._create_window()
         self._size = None
@@ -46,10 +53,10 @@ class TegakiRecognize(object):
         loader = gdk.PixbufLoader()
         loader.write(data)
         loader.close()
-        pixbuf = loader.get_pixbuf()
+        self._pixbuf = loader.get_pixbuf()
 
         self._status_icon = gtk.StatusIcon()
-        self._status_icon.set_from_pixbuf(pixbuf)
+        self._status_icon.set_from_pixbuf(self._pixbuf)
 
         self._status_icon.connect("activate", self._on_activate)
         self._status_icon.connect("popup-menu", self._on_popup)
@@ -58,13 +65,27 @@ class TegakiRecognize(object):
 
     def _create_window(self):
         self._window = gtk.Window()
+        self._window.set_icon(self._pixbuf)
         self._window.set_position(gtk.WIN_POS_CENTER)
         self._window.set_title("Tegaki")
-        rw = SmartRecognizerWidget()
+        if self._simple:
+            rw = SimpleRecognizerWidget()
+        else:
+            rw = SmartRecognizerWidget()
         self._window.add(rw)
 
         rw.connect("commit-string", self._on_commit)
         self._window.connect("delete-event", self._on_delete_event)
+
+        # add quit button if the option "don't quit" is passed
+        if self._dont_quit:
+            vbox = rw.get_toolbar_vbox()
+            button = gtk.Button()
+            image = gtk.image_new_from_stock(gtk.STOCK_QUIT, 
+                                             gtk.ICON_SIZE_BUTTON)
+            button.set_image(image)
+            button.connect("clicked", lambda x: gtk.main_quit())
+            vbox.pack_start(button, expand=False)
 
         if not self._hide:
             self._window.show_all()
@@ -79,9 +100,12 @@ class TegakiRecognize(object):
             self._window.move(*self._position)
 
     def _on_delete_event(self, widget, event):
-        self._save_window_position()
-        self._window.hide()
-        return True # don't propagate the event
+        if self._dont_quit:
+            self._save_window_position()
+            self._window.hide()
+            return True # don't propagate the event
+        else:
+            gtk.main_quit()
 
     def _on_activate(self, widget):
         if self._window.get_property("visible"):
@@ -106,15 +130,20 @@ class TegakiRecognize(object):
     def run(self):
         gtk.main()
 
-parser = OptionParser()
+parser = OptionParser(version="%prog " + VERSION)
 parser.add_option("", "--hide",
                   action="store_true", dest="hide", default=False,
                   help="don't show window on startup")
+parser.add_option("-s", "--simple",
+                  action="store_true", dest="simple", default=False,
+                  help="use simple recognizer instead of the smart one")
+parser.add_option("-d", "--dont-quit",
+                  action="store_true", dest="dont_quit", default=False,
+                  help="don't quit when main window is closed")
 
 (options, args) = parser.parse_args()
 
-
-TegakiRecognize(options.hide).run()
+TegakiRecognize(options).run()
 
 
 

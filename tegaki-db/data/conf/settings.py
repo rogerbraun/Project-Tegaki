@@ -20,11 +20,9 @@ DATABASE_HOST = 'localhost' # Set to empty string for localhost.
 DATABASE_PORT = ''   # Set to empty string for localhost. 
                      # Not used with sqlite3.       
 
-CUSTOM_USER_MODEL = 'users.TegakiUser'
-
+import os
 TEGAKIDB_ROOT = '/path/to/hwr/tegaki-db'
 WEBCANVAS_ROOT = '/path/to/hwr/tegaki-webcanvas/webcanvas'
-DOJO_ROOT = '/path/to/dojo-release-1.3.1'
 
 # Local time zone for this installation. Choices can be found here:
 # http://www.postgresql.org/docs/8.1/static/datetime-keywords.html#DATETIME-TIMEZONE-SET-TABLE
@@ -46,7 +44,7 @@ USE_I18N = True
 
 # Absolute path to the directory that holds media.
 # Example: "/home/media/media.lawrence.com/"
-MEDIA_ROOT = TEGAKIDB_ROOT + '/data/www/'
+MEDIA_ROOT = os.path.join(TEGAKIDB_ROOT, 'data/www/')
 
 # URL that handles the media served from MEDIA_ROOT.
 # Example: "http://media.lawrence.com"
@@ -68,11 +66,28 @@ TEMPLATE_LOADERS = (
     'django.template.loaders.app_directories.load_template_source',
 )
 
+TEMPLATE_CONTEXT_PROCESSORS = (
+    "django.core.context_processors.auth",
+    "django.core.context_processors.debug",
+    "django.core.context_processors.i18n",
+    "django.core.context_processors.media",
+    "django.core.context_processors.request",
+)
+
+
 MIDDLEWARE_CLASSES = (
     'django.middleware.common.CommonMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.middleware.doc.XViewMiddleware',
+    'dojango.middleware.DojoAutoRequireMiddleware',
+)
+
+AUTH_PROFILE_MODULE = 'users.TegakiUser'
+
+DOJANGO_DATAGRID_ACCESS = (
+    'users.TegakiUser',
+    'hwdb.HandwritingSample',
 )
 
 LOGIN_URL = '/tegaki/login/'
@@ -84,12 +99,12 @@ TEMPLATE_DIRS = (
     TEGAKIDB_ROOT + '/data/templates/',
 )
 
-FIXTURE_DIRS = (
-    TEGAKIDB_ROOT + '/data/fixtures/',
+TEMPLATE_DIRS = (
+    os.path.join(TEGAKIDB_ROOT, 'data/templates/'),
 )
 
 FIXTURE_DIRS = (
-    TEGAKIDB_ROOT + '/data/fixtures/',
+    os.path.join(TEGAKIDB_ROOT, 'data/fixtures/'),
 )
 
 INSTALLED_APPS = (
@@ -98,6 +113,8 @@ INSTALLED_APPS = (
     'django.contrib.sessions',
     'django.contrib.sites',
     'django.contrib.admin',
+
+    'tegakidb.dojango',
                 
     'tegakidb.hwdb',    
     'tegakidb.news',

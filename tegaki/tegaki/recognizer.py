@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2009 Mathieu Blondel
+# Copyright (C) 2008 The Tegaki project contributors
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,6 +15,9 @@
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Contributors to this file:
+# - Mathieu Blondel
 
 import glob
 import os
@@ -65,12 +68,25 @@ class Recognizer:
     def _get_available_models(recognizer):
         available_models = SortedDict()
 
+        try:
+            # UNIX
+            homedir = os.environ['HOME']
+        except KeyError:
+            # Windows
+            homedir = os.environ['USERPROFILE']
+
         # FIXME: use $prefix defined in setup
         for directory in (os.path.join("/usr/local/share/tegaki/models/",
                                        recognizer),
                           os.path.join("/usr/share/tegaki/models/",
                                        recognizer),
-                          os.path.join(os.environ['HOME'], ".tegaki", "models",
+                          # for Maemo
+                          os.path.join("/media/mmc1/tegaki/models/",
+                                       recognizer),
+                          os.path.join("/media/mmc2/tegaki/models/",
+                                       recognizer),
+                          # personal directory
+                          os.path.join(homedir, ".tegaki", "models",
                                        recognizer)):
 
             if not os.path.exists(directory):
@@ -79,7 +95,7 @@ class Recognizer:
             meta_files = glob.glob(os.path.join(directory, "*.meta"))
 
             for meta_file in meta_files:
-                meta = Recognizer._read_meta_file(meta_file)
+                meta = Recognizer.read_meta_file(meta_file)
 
                 if not meta.has_key("name") or \
                     not meta.has_key("shortname"):
@@ -100,33 +116,46 @@ class Recognizer:
         return available_models
 
     @staticmethod
-    def _read_meta_file(meta_file):
+    def read_meta_file(meta_file):
         f = open(meta_file)
         ret = {}
         for line in f.readlines():
-            key, value = [s.strip() for s in line.strip().split("=")]
-            ret[key] = value
+            try:
+                key, value = [s.strip() for s in line.strip().split("=")]
+                ret[key] = value
+            except ValueError:
+                continue
         f.close()
         return ret
+
+    def open(self, path):
+        """
+        raises RecognizerError if could not open
+        """
+        raise NotImplementedError
 
     def get_model(self):
         return self._model
 
     def set_model(self, model_name):
+        """
+        Sets a model with a model available on the system.
+        model_name must exist for that recognizer.
+        """
         if not model_name in self.__class__.get_available_models():
             raise RecognizerError, "Model does not exist"
 
         self._model = model_name
 
-        model = ZinniaRecognizer.get_available_models()[model_name]["path"]
+        path = self.__class__.get_available_models()[model_name]["path"]
 
-        if not self._recognizer.open(model):
-            raise RecognizerError, "Could not open model"      
+        self.open(path)
 
     # To be implemented by child class
-    def recognize(self, model, writing, n=10):
+    def recognize(self, writing, n=10):
         """
-        Recognizes writing using model and returns n candidates.
+        Recognizes writing and returns n candidates.
+        A model must be set with set_model() beforehand.
         """
         raise NotImplementedError
 
@@ -138,6 +167,10 @@ try:
         def __init__(self):
             Recognizer.__init__(self)
             self._recognizer = zinnia.Recognizer()
+
+        def open(self, path):
+            ret = self._recognizer.open(path) 
+            if not ret: raise RecognizerError, "Could not open!"
 
         def recognize(self, writing, n=10):
             s = zinnia.Character()
@@ -152,7 +185,7 @@ try:
                 for x, y in stroke:
                     s.add(i, x, y)
 
-            result = self._recognizer.classify(s, n)
+            result = self._recognizer.classify(s, n+1)
             size = result.size()
 
             return [(result.value(i), result.score(i)) \
@@ -166,16 +199,16 @@ if __name__ == "__main__":
     from tegaki.character import Character
 
     recognizer = sys.argv[1] # name of recognizer
-    model = sys.argv[2] # name of .model file
+    model = sys.argv[2] # name of model file
     char = Character()
-    char.read(sys.argv[3])
-    writing = char.get_writing() # path of .xml file
+    char.read(sys.argv[3]) # path of .xml file
+    writing = char.get_writing() 
 
     recognizers = Recognizer.get_available_recognizers()
     print "Available recognizers", recognizers
 
     if not recognizer in recognizers:
-        raise "Not an available recognizer"
+        raise Exception, "Not an available recognizer"
 
     recognizer_klass = recognizers[recognizer]
     recognizer = recognizer_klass()
@@ -184,7 +217,7 @@ if __name__ == "__main__":
     print "Available models", models
 
     if not model in models:
-        raise "Not an available model"
+        raise Exception, "Not an available model"
 
     recognizer.set_model(model)
 

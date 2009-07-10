@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2008 Mathieu Blondel
+# Copyright (C) 2008-2009 The Tegaki project contributors
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,11 +16,16 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+# Contributors to this file:
+# - Mathieu Blondel
+
 import xml.parsers.expat
 import cStringIO
 import gzip as gzipm
 import bz2 as bz2m
 from math import floor, atan, sin, cos, pi
+import os
+import re
 
 try:
     # lxml is used for DTD validation
@@ -93,6 +98,9 @@ class Point(dict):
 
         return "{ %s }" % ", ".join(attrs)
 
+    def to_sexp(self):
+        return "(%d %d)" % (self.x, self.y)
+
     def __eq__(self, othr):
         if not isinstance(othr, Point):
             return False
@@ -150,7 +158,10 @@ class Stroke(list):
         
         s += "]}"
 
-        return s  
+        return s
+
+    def to_sexp(self):
+        return "(" + "".join([p.to_sexp() for p in self]) + ")"
 
     def __eq__(self, othr):
         if not isinstance(othr, Stroke):
@@ -543,6 +554,11 @@ class Writing(object):
 
         return s
 
+    def to_sexp(self):
+        return "((width %d)(height %d)(strokes %s))" % \
+            (self._width, self._height, 
+             "".join([s.to_sexp() for s in self._strokes]))                    
+         
     def __str__(self):
         return str(self.get_strokes(full=True))
 
@@ -732,6 +748,10 @@ class Character(_XmlBase):
 
         return s
 
+    def to_sexp(self):
+        return "(character (value %s)" % self._utf8 + \
+                    self._writing.to_sexp()[1:-1]
+
     def __eq__(self, char):
         if not isinstance(char, Character):
             return False
@@ -834,6 +854,53 @@ class CharacterCollection(_XmlBase):
     def __init__(self):
         self._characters = SortedDict()
 
+    @staticmethod
+    def from_character_directory(directory,
+                                 extensions=["xml", "bz2", "gz"], 
+                                 recursive=True):
+        """
+        Creates a character collection from a directory containing
+        individual character files.
+        """
+        regexp = re.compile("\.(%s)$" % "|".join(extensions))
+        charcol = CharacterCollection()
+        
+        for name in os.listdir(directory):
+            full_path = os.path.join(directory, name)
+            if os.path.isdir(full_path) and recursive:
+                charcol += CharacterCollection.from_character_directory(
+                               full_path, extensions)
+            elif regexp.search(full_path):
+                char = Character()
+                gzip = False; bz2 = False
+                if full_path.endswith(".gz"): gzip = True
+                if full_path.endswith(".bz2"): bz2 = True
+                
+                try:
+                    char.read(full_path, gzip=gzip, bz2=bz2)
+                except ValueError:
+                    continue # ignore malformed XML files
+
+                utf8 = char.get_utf8()
+                if utf8 is None: utf8 = "Unknown"
+
+                charcol.add_set(utf8)
+                if not char in charcol.get_characters(utf8):
+                    charcol.append_character(utf8, char)
+                
+        return charcol
+
+    def __add__(self, other):
+        new = CharacterCollection()
+        for charcol in (self, other):
+            for set_name in charcol.get_set_list():
+                new.add_set(set_name)
+                characters = new.get_characters(set_name)
+                for char in charcol.get_characters(set_name):
+                    if not char in characters:
+                        new.append_character(set_name, char)
+        return new
+                   
     def add_set(self, set_name):
         if not self._characters.has_key(set_name):
             self._characters[set_name] = []

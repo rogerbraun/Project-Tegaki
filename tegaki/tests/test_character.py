@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2008 Mathieu Blondel
+# Copyright (C) 2008 The Tegaki project contributors
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,6 +15,9 @@
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Contributors to this file:
+# - Mathieu Blondel
 
 import unittest
 import os
@@ -591,6 +594,16 @@ u'pressure': 0, u'x': 4}]}
             sys.stderr.write("lxml missing!\n")
             pass
 
+    def testToSexp(self):
+        f = os.path.join(self.currdir, "data", "character.xml")
+        char = Character()
+        char.read(f)
+        f = open(os.path.join(self.currdir, "data", "character.sexp"))
+        sexp = f.read().strip()
+        f.close()
+        self.assertEquals(char.to_sexp(), sexp)
+        
+
 class CharacterCollectionTest(unittest.TestCase):
 
     def setUp(self):
@@ -684,4 +697,53 @@ class CharacterCollectionTest(unittest.TestCase):
         charcol2.read_string(charcol.write_string(bz2=True), bz2=True)
         self.assertEquals(charcol.get_set_list(), charcol2.get_set_list())
         self.assertEquals(charcol.get_all_characters(),
-                          charcol2.get_all_characters())        
+                          charcol2.get_all_characters())   
+
+    def testAddSame(self):
+        path = os.path.join(self.currdir, "data", "collection", "test.charcol")
+        charcol = CharacterCollection()
+        charcol.read(path)
+        charcol2 = CharacterCollection()
+        charcol2.read(path)
+        charcol3 = charcol + charcol2
+        self.assertEquals(charcol3.get_set_list(), ["一", "三", "二", "四"])
+        self.assertEquals(len(charcol3.get_characters("一")), 3)
+        self.assertEquals(len(charcol3.get_characters("三")), 2)
+        self.assertEquals(len(charcol3.get_characters("二")), 1)
+        self.assertEquals(len(charcol3.get_characters("四")), 0)
+
+    def testAddSame(self):
+        path = os.path.join(self.currdir, "data", "collection", "test.charcol")
+        charcol = CharacterCollection()
+        charcol.read(path)
+        path2 = os.path.join(self.currdir, "data", "collection",
+                             "test2.charcol")
+        charcol2 = CharacterCollection()
+        charcol2.read(path2)
+        charcol3 = charcol + charcol2
+        self.assertEquals(charcol3.get_set_list(), ["一", "三", "二", "四",
+                                                    "a", "b", "c", "d"])
+        self.assertEquals(len(charcol3.get_characters("一")), 3)
+        self.assertEquals(len(charcol3.get_characters("三")), 2)
+        self.assertEquals(len(charcol3.get_characters("二")), 1)
+        self.assertEquals(len(charcol3.get_characters("四")), 0)
+        self.assertEquals(len(charcol3.get_characters("a")), 3)
+        self.assertEquals(len(charcol3.get_characters("b")), 2)
+        self.assertEquals(len(charcol3.get_characters("c")), 1)
+        self.assertEquals(len(charcol3.get_characters("d")), 0)
+
+    def testFromCharDirRecursive(self):
+        directory = os.path.join(self.currdir, "data")
+        charcol = CharacterCollection.from_character_directory(directory)
+        self.assertEquals(charcol.get_set_list(), ["防", "三", "一", "二"])
+        self.assertEquals(len(charcol.get_characters("一")), 3)
+        self.assertEquals(len(charcol.get_characters("三")), 2)
+        self.assertEquals(len(charcol.get_characters("二")), 1)
+        self.assertEquals(len(charcol.get_characters("防")), 1)
+
+    def testFromCharDirNotRecursive(self):
+        directory = os.path.join(self.currdir, "data")
+        charcol = CharacterCollection.from_character_directory(directory,
+                                        recursive=False)
+        self.assertEquals(charcol.get_set_list(), ["防"])
+        self.assertEquals(len(charcol.get_characters("防")), 1)

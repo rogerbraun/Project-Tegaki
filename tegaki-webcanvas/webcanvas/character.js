@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2008 Mathieu Blondel
+* Copyright (C) 2008 The Tegaki project contributors
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -14,6 +14,11 @@
 * You should have received a copy of the GNU General Public License along
 * with this program; if not, write to the Free Software Foundation, Inc.,
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+*/
+
+/* 
+* Contributors to this file:
+*  - Mathieu Blondel
 */
 
 DEFAULT_WIDTH = 1000;
@@ -60,7 +65,9 @@ Point.prototype.toXML = function() {
     return "<point " + values.join(" ") + " />";
 }
 
-Point.prototype.toSEXP = function() {
+
+Point.prototype.toSexp = function() {
+
     return "(" + this["x"] + " "+ this["y"] + ")";
 }
 
@@ -98,7 +105,8 @@ Stroke.prototype.getDuration = function() {
     if (this.points.length > 0) {
         last = this.points.length - 1;
 
-        if (this.points[last].timestamp != null && this.points[0].timestamp != null)
+        if (this.points[last].timestamp != null && this.points[0].timestamp !=
+null)
             return (this.points[last].timestamp - this.points[0].timestamp);
     }
     return null;
@@ -119,11 +127,13 @@ Stroke.prototype.toXML = function() {
     return s;
 }
 
-Stroke.prototype.toSEXP = function() {
+
+Stroke.prototype.toSexp = function() {
     var s = "(";
 
     for (var i=0; i < this.points.length; i++)
-        s += "  " + this.points[i].toSEXP() + "\n";
+        s += "  " + this.points[i].toSexp() + "\n";
+
 
     s += ")";
 
@@ -261,14 +271,18 @@ Writing.prototype.toXML = function() {
     return s;
 }
 
-Writing.prototype.toSEXP = function() {
+
+Writing.prototype.toSexp = function() {
+
     var s = "(width " + this.width + ") "
     s += "(height " + this.height + ")\n"
 
     s += "(strokes ";
 
     for (var i = 0; i < this.strokes.length; i++) {
-        var lines = this.strokes[i].toSEXP().split("\n");
+
+        var lines = this.strokes[i].toSexp().split("\n");
+
         
         for (var j = 0; j < lines.length; j++)
             s += " " + lines[j] + "";
@@ -323,10 +337,12 @@ Character.prototype.setWriting = function(writing) {
     this.writing = writing;
 }
 
-Character.prototype.toSEXP = function() {
+
+Character.prototype.toSexp = function() {
     var s = "(character";
 
-    var lines = this.writing.toSEXP().split("\n");
+    var lines = this.writing.toSexp().split("\n");
+
 
     for (var i = 0; i < lines.length; i++)
         s += " " + lines[i] + " ";
