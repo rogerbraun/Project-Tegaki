@@ -6,9 +6,9 @@ Tegaki project integration in SCIM.
 Requirements
 ------------
 
-Python       2.4         http://www.python.org
-scim-python  0.1.13rc1   http://code.google.com/p/scim-python/
-tegaki-gtk   0.1
+Python         2.4         http://www.python.org
+scim-python    0.1.13rc1   http://code.google.com/p/scim-python/
+tegaki-pygtk   0.1
 
 Install
 -------
@@ -25,4 +25,4 @@ License. See the COPYING file for more information.
 Homepage
 --------
 
-http://tegaki.sourceforge.net
+http://www.tegaki.org

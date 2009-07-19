@@ -5,7 +5,7 @@ import os
 
 def getversion():
     currdir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(currdir, "tegaki", "__init__.py")
+    path = os.path.join(currdir, "tegakigtk", "__init__.py")
     import re
     regexp = re.compile(r"VERSION = '([^']*)'")
     f = open(path)
@@ -14,16 +14,17 @@ def getversion():
     return regexp.search(buf).group(1)
 
 # Please run
-# python setup.py install  
+# python setup.py install   
 
 setup(
-    name = 'tegaki',
-    description = 'Tegaki library',
+    name = 'tegaki-pygtk',
+    description = 'Tegaki pygtk library',
     author = 'Mathieu Blondel',
     author_email = 'mathieu ÂT mblondel DÔT org',
-    url = 'http://tegaki.sourceforge.net',
+    url = 'http://www.tegaki.org',
     version = getversion(),
     license='GPL',
-    packages = ['tegaki'],
-    package_dir = {'tegaki':'tegaki/'}
+    packages = ['tegakigtk'],
+    package_dir = {'tegakigtk':'tegakigtk/'},
+    data_files=[('share/tegaki/icons/', ['data/tegaki/icons/handwriting.png'])]
 )
