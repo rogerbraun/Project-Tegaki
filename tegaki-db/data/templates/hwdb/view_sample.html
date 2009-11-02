@@ -1,10 +1,10 @@
 {% extends "base/base.html" %}
 
 {% block bread_crumbs %}
-        <a href="{% url hwdb %}">HWDB</a> :: <a href="{% url hwdb-samples %}">Samples</a> ::
-                <span class="active-crumb">Sample - {{char}}</span>
+    <a href="/hwdb/">Home</a> :: <a href="{% url hwdb-samples %}">Samples</a> :: <span class="active-crumb">View Sample</span><span class="active-crumb">{{char}}</span>
 {% endblock %}
 
+{% block samples_li_class %}class="cur_link"{% endblock %}
 
 {% block title %}Tegaki-db - {{char}}{% endblock %}
 {% block extrahead %}
@@ -35,7 +35,7 @@ function playStele()
 {% endblock %}
 
 {% block content %}
-<h1>Sample:</h1>
+<h1>View Sample</h1>
 <span id="char" style="font-size:5em">{{char}}</span>
 
 

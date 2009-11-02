@@ -22,14 +22,15 @@
 
 import sys
 import os
+import time
 from optparse import OptionParser
 
 from tegaki.character import CharacterCollection
 from tegaki.recognizer import Recognizer, RecognizerError
 
-from tegakitools.utils import tomoe_dict_to_character_collection
+from tegakitools.tomoe import tomoe_dict_to_character_collection
 
-VERSION = '0.2'
+VERSION = '0.3'
 
 def harmonic_mean(x1, x2):
     if x1 == 0.0 and x2 == 0.0:
@@ -49,10 +50,23 @@ class TegakiEval(object):
         self._directories = options.directories
         self._charcols = options.charcols
         self._tomoe = options.tomoe
-        self._recognizer = args[0]
-        self._model = args[1]
+        self._list = options.list
+        if not self._list:
+            self._recognizer = args[0]
+            self._model = args[1]
 
     def run(self):
+        if self._list:
+            self._list_recognizers()
+        else:
+            self._recognize()
+
+    def _list_recognizers(self):
+        avail_recognizers = Recognizer.get_all_available_models()
+        print "\n".join(["- %s (%s)" % (model, recog) for recog, model, meta \
+                         in avail_recognizers])
+
+    def _recognize(self):
         charcol = CharacterCollection()
 
         # add the directories provided
@@ -98,6 +112,16 @@ class TegakiEval(object):
         if os.path.exists(self._model):
             # the path exists so we consider the parameter to be a model path
             method = recognizer.open
+
+            # try to find a .meta file
+            meta_file = self._model.replace(".model", ".meta")
+            if os.path.exists(meta_file) and meta_file.endswith(".meta"):
+                try:
+                    meta = Recognizer.read_meta_file(meta_file)
+                except RecognizerError, e:
+                    raise TegakiEvalError, str(e) 
+            else:
+                meta = {}
         else:
             # otherwise we consider the parameter to be a model name
             avail_models = recognizer_class.get_available_models()
@@ -105,11 +129,13 @@ class TegakiEval(object):
                 err = "Not an available model!\n"
                 err += "Available ones include: %s" % \
                     ", ".join(["\"%s\"" % k for k in avail_models.keys()])
-                raise TegakiEvalError, err
+                raise TegakiEvalError, err 
 
+            meta = avail_models[self._model]
             method = recognizer.set_model
         try:
             method(self._model)
+            recognizer.set_options(meta)
         except RecognizerError, e:
             raise TegakiEvalError, str(e)
 
@@ -130,6 +156,8 @@ class TegakiEval(object):
         # calculate our statistics for each character
 
         canddict = {} # store ALL the candidate results for verbosity >= 2
+
+        start_time = time.time()
 
         for char in all_chars:
             utf8 = char.get_utf8()
@@ -152,10 +180,19 @@ class TegakiEval(object):
                 for c in cand[0:n]:
                     n_pred[n][c] = n_pred[n].get(c, 0) + 1
 
+        end_time = time.time()
+
         # Calculate accuracy/recall and precision for each character
         # Print the overall results
         print "Overall results"
+        print "\tRecognizer: %s" % self._recognizer
         print "\tNumber of characters evaluated: %d\n" % len(all_chars)
+        total_time = end_time - start_time
+        print "\tTotal time: %0.2f sec" % float(total_time)
+        print "\tAverage time per character: %0.2f sec" % \
+            (float(total_time) / len(all_chars))
+        print "\tRecognition speed: %0.2f char/sec\n" % \
+            (len(all_chars) / float(total_time))
 
         total_samples = sum(n_samples.values())
         recall = {}
@@ -254,11 +291,14 @@ parser.add_option("-t", "--tomoe-dict",
                   action="append", type="string", dest="tomoe",
                   default=[],
                   help="Tomoe XML dictionary files")
+parser.add_option("-l", "--list",
+                  action="store_true",dest="list", default=False,
+                  help="List available recognizers and models")
 
 (options, args) = parser.parse_args()
 
 try:
-    if len(args) < 2:
+    if not options.list and len(args) < 2:
         raise TegakiEvalError, "Needs a recognizer and a model!"
 
     TegakiEval(options, args).run()

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2008 The Tegaki project contributors
+# Copyright (C) 2008-2009 The Tegaki project contributors
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,27 +21,68 @@
 
 import glob
 import os
+import imp
 
-from dictutils import SortedDict
+from tegaki.dictutils import SortedDict
 
 class RecognizerError(Exception):
     pass
 
-class Recognizer:
+class Recognizer(object):
 
     def __init__(self):
         self._model = None
    
-    @staticmethod
-    def get_available_recognizers():
-        recognizers = SortedDict()
+    @classmethod
+    def get_available_recognizers(cls):
+        if not "available_recognizers" in cls.__dict__:
+            cls._load_available_recognizers()
+        return cls.available_recognizers
+
+    @classmethod
+    def _load_available_recognizers(cls):
+        cls.available_recognizers  = SortedDict()
+
+        currdir = os.path.dirname(os.path.abspath(__file__))
 
         try:
-            recognizers["zinnia"] = ZinniaRecognizer
-        except NameError:
-            pass
+            # UNIX
+            homedir = os.environ['HOME']
+        except KeyError:
+            # Windows
+            homedir = os.environ['USERPROFILE']
 
-        return recognizers   
+        # FIXME: use $prefix defined in setup
+        search_path = ["/usr/local/share/tegaki/engines/",
+                       "/usr/share/tegaki/engines/",
+                       # for Maemo
+                       "/media/mmc1/tegaki/engines/",
+                       "/media/mmc2/tegaki/engines/",
+                       # personal directory
+                       os.path.join(homedir, ".tegaki", "engines"),     
+                       os.path.join(currdir, "engines")]
+
+        if 'TEGAKI_ENGINE_PATH' in os.environ and \
+            os.environ['TEGAKI_ENGINE_PATH'].strip() != "":
+            search_path += os.environ['TEGAKI_ENGINE_PATH'].strip().split(":")
+
+        for directory in search_path:
+            if not os.path.exists(directory):
+                continue
+
+            for f in glob.glob(os.path.join(directory, "*.py")):
+                if f.endswith("__init__.py") or f.endswith("setup.py"):
+                    continue
+
+                module_name = os.path.basename(f).replace(".py", "")
+                module_name += "recognizer"
+                module = imp.load_source(module_name, f)
+
+                try:
+                    name = module.RECOGNIZER_CLASS.RECOGNIZER_NAME
+                    cls.available_recognizers[name] = module.RECOGNIZER_CLASS
+                except AttributeError:
+                    pass       
 
     @staticmethod
     def get_all_available_models():
@@ -56,12 +97,11 @@ class Recognizer:
 
     @classmethod
     def get_available_models(cls):
-        if "available_models" in cls.__dict__:
+        if "available_models" in cls.__dict__: 
             return cls.available_models
         else:
-            # change ZinniaRecognizer to zinnia
-            name = cls.__name__.replace("Recognizer", "").lower()
-            cls.__dict__["available_models"] = cls._get_available_models(name)
+            name = cls.RECOGNIZER_NAME
+            cls.available_models = cls._get_available_models(name)
             return cls.__dict__["available_models"]
 
     @staticmethod
@@ -76,18 +116,20 @@ class Recognizer:
             homedir = os.environ['USERPROFILE']
 
         # FIXME: use $prefix defined in setup
-        for directory in (os.path.join("/usr/local/share/tegaki/models/",
-                                       recognizer),
-                          os.path.join("/usr/share/tegaki/models/",
-                                       recognizer),
-                          # for Maemo
-                          os.path.join("/media/mmc1/tegaki/models/",
-                                       recognizer),
-                          os.path.join("/media/mmc2/tegaki/models/",
-                                       recognizer),
-                          # personal directory
-                          os.path.join(homedir, ".tegaki", "models",
-                                       recognizer)):
+        search_path = ["/usr/local/share/tegaki/models/",
+                       "/usr/share/tegaki/models/",
+                       # for Maemo
+                       "/media/mmc1/tegaki/models/",
+                       "/media/mmc2/tegaki/models/",
+                       # personal directory
+                       os.path.join(homedir, ".tegaki", "models")]
+
+        if 'TEGAKI_MODEL_PATH' in os.environ and \
+            os.environ['TEGAKI_MODEL_PATH'].strip() != "":
+            search_path += os.environ['TEGAKI_MODEL_PATH'].strip().split(":")
+
+        for directory in search_path:
+            directory = os.path.join(directory, recognizer)
 
             if not os.path.exists(directory):
                 continue
@@ -118,7 +160,7 @@ class Recognizer:
     @staticmethod
     def read_meta_file(meta_file):
         f = open(meta_file)
-        ret = {}
+        ret = SortedDict()
         for line in f.readlines():
             try:
                 key, value = [s.strip() for s in line.strip().split("=")]
@@ -134,6 +176,12 @@ class Recognizer:
         """
         raise NotImplementedError
 
+    def set_options(self, options):
+        """
+        Process recognizer/model specific options.
+        """
+        pass
+
     def get_model(self):
         return self._model
 
@@ -147,7 +195,11 @@ class Recognizer:
 
         self._model = model_name
 
-        path = self.__class__.get_available_models()[model_name]["path"]
+        meta = self.__class__.get_available_models()[model_name]
+
+        self.set_options(meta)
+
+        path = meta["path"]
 
         self.open(path)
 
@@ -159,40 +211,6 @@ class Recognizer:
         """
         raise NotImplementedError
 
-try:
-    import zinnia
-
-    class ZinniaRecognizer(Recognizer):
-
-        def __init__(self):
-            Recognizer.__init__(self)
-            self._recognizer = zinnia.Recognizer()
-
-        def open(self, path):
-            ret = self._recognizer.open(path) 
-            if not ret: raise RecognizerError, "Could not open!"
-
-        def recognize(self, writing, n=10):
-            s = zinnia.Character()
-
-            s.set_width(writing.get_width())
-            s.set_height(writing.get_height())
-
-            strokes = writing.get_strokes()
-            for i in range(len(strokes)):
-                stroke = strokes[i]
-
-                for x, y in stroke:
-                    s.add(i, x, y)
-
-            result = self._recognizer.classify(s, n+1)
-            size = result.size()
-
-            return [(result.value(i), result.score(i)) \
-                        for i in range(0, (size - 1))]
-
-except ImportError:
-    pass
 
 if __name__ == "__main__":
     import sys

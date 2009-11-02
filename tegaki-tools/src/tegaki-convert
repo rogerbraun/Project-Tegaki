@@ -26,9 +26,10 @@ from optparse import OptionParser
 
 from tegaki.character import CharacterCollection
 
-from tegakitools.utils import tomoe_dict_to_character_collection
+from tegakitools.tomoe import tomoe_dict_to_character_collection
+from tegakitools.kuchibue import kuchibue_to_character_collection
 
-VERSION = '0.2'
+VERSION = '0.3'
 
 class TegakiConvertError(Exception):
     pass
@@ -39,6 +40,10 @@ class TegakiConvert(object):
         self._directories = options.directories
         self._charcols = options.charcols
         self._tomoe = options.tomoe
+        self._kuchibue = options.kuchibue
+        self._include = options.include
+        self._exclude = options.exclude
+        self._max_samples = options.max_samples
 
         try:
             self._output_path = args[0]
@@ -65,6 +70,35 @@ class TegakiConvert(object):
         for tomoe in self._tomoe:
             charcol += tomoe_dict_to_character_collection(tomoe)
 
+        # add the kuchibue databases provided
+        for kuchibue in self._kuchibue:
+            charcol += kuchibue_to_character_collection(kuchibue)
+
+        # characters to include
+        buf = ""
+        for inc_path in self._include:
+            f = open(inc_path)
+            buf += f.read()
+            f.close()
+
+        if len(buf) > 0:
+            charcol.include_characters_from_text(buf)
+
+        # characters to exclude
+        buf = ""
+        for exc_path in self._exclude:
+            f = open(exc_path)
+            buf += f.read()
+            f.close()
+
+        if len(buf) > 0:
+            charcol.exclude_characters_from_text(buf)
+
+        # max samples
+        if self._max_samples:
+            charcol.remove_samples(keep_at_most=self._max_samples)
+
+        # output
         if not self._output_path:
             # outputs to stdout if not output path specified
             print charcol.to_xml()
@@ -80,7 +114,7 @@ parser = OptionParser(usage="usage: %prog [options] [output-path]",
 parser.add_option("-d", "--directory",
                   action="append", type="string", dest="directories",
                   default=[],
-                  help="directory containing individual XML character files")
+                  help="Directory containing individual XML character files")
 parser.add_option("-c", "--charcol",
                   action="append", type="string", dest="charcols",
                   default=[],
@@ -89,6 +123,21 @@ parser.add_option("-t", "--tomoe-dict",
                   action="append", type="string", dest="tomoe",
                   default=[],
                   help="Tomoe XML dictionary files")
+parser.add_option("-k", "--kuchibue",
+                  action="append", type="string", dest="kuchibue",
+                  default=[],
+                  help="Kuchibue unipen database")
+parser.add_option("-i", "--include",
+                  action="append", type="string", dest="include",
+                  default=[],
+                  help="File containing characters to include")
+parser.add_option("-e", "--exclude",
+                  action="append", type="string", dest="exclude",
+                  default=[],
+                  help="File containing characters to exclude")
+parser.add_option("-m", "--max-samples",
+                  type="int", dest="max_samples",
+                  help="Maximum number of samples per character")
 
 (options, args) = parser.parse_args()
 

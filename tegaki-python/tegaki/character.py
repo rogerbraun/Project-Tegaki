@@ -22,7 +22,10 @@
 import xml.parsers.expat
 import cStringIO
 import gzip as gzipm
-import bz2 as bz2m
+try:
+    import bz2 as bz2m
+except ImportError:
+    pass
 from math import floor, atan, sin, cos, pi
 import os
 import re
@@ -629,7 +632,10 @@ class _XmlBase(object):
                 if gzip:
                     file = gzipm.GzipFile(file, compresslevel=compresslevel)
                 elif bz2:
-                    file = bz2m.BZ2File(file, compresslevel=compresslevel)
+                    try:
+                        file = bz2m.BZ2File(file, compresslevel=compresslevel)
+                    except NameError:
+                        raise NotImplementedError
                 else:
                     file = open(file)
                     
@@ -646,7 +652,10 @@ class _XmlBase(object):
             io = gzipm.GzipFile(fileobj=io, compresslevel=compresslevel)
             string = io.read()
         elif bz2:
-            string = bz2m.decompress(string)
+            try:
+                string = bz2m.decompress(string)
+            except NameError:
+                raise NotImplementedError
             
         parser = self._get_parser()
         parser.Parse(string)
@@ -656,7 +665,10 @@ class _XmlBase(object):
             if gzip:
                 file = gzipm.GzipFile(file, "w", compresslevel=compresslevel)
             elif bz2:
-                file = bz2m.BZ2File(file, "w", compresslevel=compresslevel)
+                try:
+                    file = bz2m.BZ2File(file, "w", compresslevel=compresslevel)
+                except NameError:
+                    raise NotImplementedError
             else:            
                 file = open(file, "w")
                 
@@ -667,7 +679,10 @@ class _XmlBase(object):
 
     def write_string(self, gzip=False, bz2=False, compresslevel=9):
         if bz2:
-            return bz2m.compress(self.to_xml(), compresslevel=compresslevel)
+            try:
+                return bz2m.compress(self.to_xml(), compresslevel=compresslevel)
+            except NameError:
+                raise NotImplementedError
         elif gzip:
             io = cStringIO.StringIO()
             f = gzipm.GzipFile(fileobj=io, mode="w",
@@ -713,9 +728,15 @@ class Character(_XmlBase):
 
     def get_utf8(self):
         return self._utf8
+
+    def get_unicode(self):
+        return unicode(self.get_utf8(), "utf8")
         
     def set_utf8(self, utf8):
         self._utf8 = utf8
+
+    def set_unicode(self, uni):
+        self._utf8 = uni.encode("utf8")
 
     def get_writing(self):
         return self._writing
@@ -808,7 +829,8 @@ class Character(_XmlBase):
                     del self.__dict__[s]
 
         if name == "stroke":
-            self._writing.append_stroke(self._stroke)
+            if len(self._stroke) > 0:
+                self._writing.append_stroke(self._stroke)
             self._stroke = None
 
         self._tag = None
@@ -890,16 +912,19 @@ class CharacterCollection(_XmlBase):
                 
         return charcol
 
-    def __add__(self, other):
+    def concatenate(self, other, check_duplicate=False):
         new = CharacterCollection()
         for charcol in (self, other):
             for set_name in charcol.get_set_list():
                 new.add_set(set_name)
                 characters = new.get_characters(set_name)
                 for char in charcol.get_characters(set_name):
-                    if not char in characters:
+                    if not check_duplicate or not char in characters:
                         new.append_character(set_name, char)
         return new
+
+    def __add__(self, other):
+        return self.concatenate(other)
                    
     def add_set(self, set_name):
         if not self._characters.has_key(set_name):
@@ -912,6 +937,9 @@ class CharacterCollection(_XmlBase):
     def get_set_list(self):
         return self._characters.keys()
 
+    def get_n_sets(self):
+        return len(self.get_set_list())
+
     def get_characters(self, set_name):
         if self._characters.has_key(set_name):
             return self._characters[set_name]
@@ -923,6 +951,12 @@ class CharacterCollection(_XmlBase):
         for k in self._characters.keys():
             characters += self._characters[k]
         return characters
+
+    def get_total_n_characters(self):
+        n = 0
+        for k in self._characters.keys():
+            n += len(self._characters[k])
+        return n
 
     def set_characters(self, set_name, characters):
         self._characters[set_name] = characters
@@ -955,6 +989,52 @@ class CharacterCollection(_XmlBase):
             if len(self._characters[set_name]) - 1 >= i:
                 self.remove_character(set_name, i)
                 self.insert_character(set_name, i, character)
+
+    def _get_dict_from_text(self, text):
+        text = text.replace(" ", "").replace("\n", "").replace("\t", "")
+        dic = {}
+        for c in text:
+            dic[c] = 1
+        return dic
+
+    def include_characters_from_text(self, text):
+        """
+        Only keep characters found in text.
+        """
+        dic = self._get_dict_from_text(unicode(text, "utf8"))
+        for set_name in self.get_set_list():
+            i = 0
+            for char in self.get_characters(set_name)[:]:
+                if not char.get_unicode() in dic:
+                    self.remove_character(set_name, i)
+                else:
+                    i += 1
+        self.remove_empty_sets()
+
+    def exclude_characters_from_text(self, text):
+        """
+        Exclude characters found in text.
+        """
+        dic = self._get_dict_from_text(unicode(text, "utf8"))
+        for set_name in self.get_set_list():
+            i = 0
+            for char in self.get_characters(set_name)[:]:
+                if char.get_unicode() in dic:
+                    self.remove_character(set_name, i)
+                else:
+                    i += 1
+        self.remove_empty_sets()
+
+    def remove_samples(self, keep_at_most):
+        for set_name in self.get_set_list():
+            if len(self._characters[set_name]) > keep_at_most:
+                self._characters[set_name] = \
+                    self._characters[set_name][0:keep_at_most]
+
+    def remove_empty_sets(self):
+        for set_name in self.get_set_list():
+            if len(self.get_characters(set_name)) == 0:
+                self.remove_set(set_name)
 
     def to_xml(self):
         s = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
@@ -1047,7 +1127,8 @@ class CharacterCollection(_XmlBase):
             self._curr_chars.append(self._curr_char)
 
         if name == "stroke":
-            self._curr_writing.append_stroke(self._curr_stroke)
+            if len(self._curr_stroke) > 0:
+                self._curr_writing.append_stroke(self._curr_stroke)
             self._stroke = None
 
         self._tag = None

@@ -25,8 +25,7 @@ import glob
 import shutil
 import tarfile
 import datetime
-
-import ghmm
+import platform
 
 from tegaki.character import *
 from tegaki.arrayutils import *
@@ -35,6 +34,8 @@ from tegaki.dictutils import SortedDict
 
 from lib.exceptions import *
 from lib.utils import *
+from lib.hmm import Sequence, SequenceSet, MultivariateHmm, ViterbiTrainer
+from lib import hmm
 
 class Model(object):
     """
@@ -46,21 +47,35 @@ class Model(object):
     State transitions: 0.5 itself, 0.5 next state
     """
 
+    TRAINING_NONE = 0
+    TRAINING_BAUM_WELCH = 1
+    TRAINING_VITERBI = 2
+    TRAINING_BOTH = 3
+
     def __init__(self, options):
+
+        if platform.system() == "Java": # Jython 2.5
+            self.Trainer = hmm.JahmmBaumWelchTrainer
+            self.ViterbiCalculator = hmm.JahmmViterbiCalculator
+        else:
+            self.Trainer = hmm.GhmmBaumWelchTrainer
+            self.ViterbiCalculator = hmm.GhmmViterbiCalculator
 
         self.ALL = ["clean", "fextract", "init", "train", "eval"]
         self.COMMANDS = self.ALL + ["pad", "find", "commands", "archive"]
-     
-        self.DOMAIN = ghmm.Float()
+    
         self.verbose = options.verbose
         self.options = options
 
+        self.SELF_TRANSITION = 0.5
+        self.NEXT_TRANSITION = 0.5
         self.SAMPLING = 0.5
         self.N_STATES_PER_STROKE = 3
         self.N_DIMENSIONS = 2
         # whether to calculate non-diagonal values in the covariance matrix
         # or not
         self.NON_DIAGONAL = False
+        self.TRAINING = self.TRAINING_BAUM_WELCH
 
         self.TRAIN_CORPORA = ["japanese-learner1", "japanese-native1"]
         self.EVAL_CORPORA = ["japanese-learner1", "japanese-native1"]
@@ -87,10 +102,17 @@ class Model(object):
         self.INIT_HMM_ROOT = os.path.join(self.HMM_ROOT, "init")
         self.TRAIN_HMM_ROOT = os.path.join(self.HMM_ROOT, "train")
 
-        self.eval_xml_files_dict = self.get_eval_xml_files_dict()
-        self.train_xml_files_dict = self.get_train_xml_files_dict()
+        self.eval_char_dict = None
+        self.train_char_dict = None
 
-    def get_xml_list_dict(self, directory, corpora):
+    def load_char_dicts(self):
+        if not self.eval_char_dict:
+            self.eval_char_dict = self.get_eval_char_dict()
+        if not self.train_char_dict:
+            self.train_char_dict = self.get_train_char_dict()
+        self.print_verbose("Data loading done")
+
+    def get_char_dict(self, directory, corpora):
         """
         Returns a dictionary with xml file list.
             keys are character codes.
@@ -99,24 +121,40 @@ class Model(object):
         directory: root directory
         corpora: corpora list to restrict to
         """
-        dict = SortedDict()
-        for file in glob.glob(os.path.join(directory, "*", "*", "*.*")):
-            corpus_name = file.split("/")[-3]
+        charcol = CharacterCollection()
+        for file in glob.glob(os.path.join(directory, "*", "*")):
+            corpus_name = file.split("/")[-2]
             # exclude data which are not in the wanted corpora
             if corpus_name not in corpora:
                 continue
-            
-            char_code = int(os.path.basename(file).split(".")[0])
-            if not dict.has_key(char_code):
-                dict[char_code] = []
-            dict[char_code].append(file)
-        return dict
-                    
-    def get_eval_xml_files_dict(self):
-        return self.get_xml_list_dict(self.EVAL_ROOT, self.EVAL_CORPORA)
 
-    def get_train_xml_files_dict(self):
-        return self.get_xml_list_dict(self.TRAIN_ROOT, self.TRAIN_CORPORA)
+            if os.path.isdir(file):
+                self.print_verbose("Loading dir %s" % file)
+                charcol += CharacterCollection.from_character_directory(file)
+            elif ".charcol" in file:
+                self.print_verbose("Loading charcol %s" % file)
+                gzip = False; bz2 = False
+                if file.endswith(".gz"): gzip = True
+                if file.endswith(".bz2"): bz2 = True
+                charcol2 = CharacterCollection()
+                charcol2.read(file, gzip=gzip, bz2=bz2)
+                charcol += charcol2
+
+        self.print_verbose("Grouping characters together...")
+        dic = SortedDict()
+        for set_name in charcol.get_set_list():
+            for char in charcol.get_characters(set_name):
+                charcode = ord(char.get_unicode())
+                if not charcode in dic: dic[charcode] = []
+                dic[charcode].append(char)
+
+        return dic
+                    
+    def get_eval_char_dict(self):
+        return self.get_char_dict(self.EVAL_ROOT, self.EVAL_CORPORA)
+
+    def get_train_char_dict(self):
+        return self.get_char_dict(self.TRAIN_ROOT, self.TRAIN_CORPORA)
 
     def get_character(self, char_path):
         char = Character()
@@ -127,7 +165,7 @@ class Model(object):
         return char
 
     def get_sequence_set(self, file_path):
-        return ghmm.SequenceSet(self.DOMAIN, file_path)
+        return SequenceSet.from_file(file_path)
 
     def get_utf8_from_char_code(self, char_code):
         return unichr(int(char_code)).encode("utf8")
@@ -140,16 +178,17 @@ class Model(object):
     # Feature extraction...
     ########################################
 
-    def get_feature_vectors(self, writing, normalize=False):
+    def get_feature_vectors(self, writing, normalize=True):
         """
         Get deltax and deltay as feature vectors.
         """
         if normalize:
+            writing.downsample_threshold(50)
             writing.normalize()
             
         strokes = writing.get_strokes()
         vectors = [(x,y) for stroke in strokes for x,y in stroke]
-        vectors = array_sample(vectors, self.SAMPLING)
+        #vectors = array_sample(vectors, self.SAMPLING)
 
         arr = []
 
@@ -164,10 +203,13 @@ class Model(object):
 
     def fextract(self):
         """Extract features"""
-        for dirname, xml_files_dict in (("eval", self.eval_xml_files_dict),
-                                       ("train", self.train_xml_files_dict)):
+
+        self.load_char_dicts()
+
+        for dirname, char_dict in (("eval", self.eval_char_dict),
+                                   ("train", self.train_char_dict)):
             
-            for char_code, xml_list in xml_files_dict.items():
+            for char_code, char_list in char_dict.items():
                 output_dir = os.path.join(self.FEATURES_ROOT, dirname)
 
                 if not os.path.exists(output_dir):
@@ -175,26 +217,21 @@ class Model(object):
 
                 sequence_set = []
 
-                for xml_file in xml_list:
-                    character = self.get_character(xml_file)
+                for character in char_list:
 
                     writing = character.get_writing()
 
                     char_features = self.get_feature_vectors(writing)
 
-                    sequence_set.append(array_flatten(char_features))
+                    sequence_set.append(char_features)
 
                 output_file = os.path.join(output_dir,
                                            str(char_code) + ".sset")
 
-                self.print_verbose(output_file)
+                self.print_verbose(output_file + " (%d chars)" % \
+                                       len(sequence_set))
 
-
-                if os.path.exists(output_file):
-                    # necessary because SequenceSet#write appends content
-                    os.unlink(output_file)
-
-                sset = ghmm.SequenceSet(self.DOMAIN, sequence_set)
+                sset = SequenceSet(sequence_set)
                 sset.write(output_file)
 
     ########################################
@@ -205,8 +242,7 @@ class Model(object):
         return glob.glob(os.path.join(self.TRAIN_FEATURES_ROOT, "*.sset"))
 
     def get_n_strokes(self, char_code):
-        file = self.train_xml_files_dict[char_code][0]
-        character = self.get_character(file)
+        character = self.train_char_dict[char_code][0]
         return character.get_writing().get_n_strokes()
 
     def get_initial_state_probabilities(self, n_states):
@@ -227,10 +263,11 @@ class Model(object):
                 state[n_states - 1] = 1.0
             else:
                 # else, as an initial value, we set the prob to stay in
-                # the same state to 0.5 and to jump to the next state to 0.5
+                # the same state to SELF_TRANSITION and to jump to the next
+                # state to NEXT_TRANSITION
                 # the values will be updated by the training
-                state[i] = 0.5
-                state[i + 1] = 0.5
+                state[i] = self.SELF_TRANSITION
+                state[i + 1] = self.NEXT_TRANSITION
 
             matrix.append(state)
        
@@ -240,12 +277,8 @@ class Model(object):
         all_segments = [[] for i in range(n_states)]
 
         for seq in sset:
-            # files contain data sequentially
-            # need to reconvert to vectors of n dimensions
-            vectors = array_reshape(list(seq), self.N_DIMENSIONS)
-
             # Segments vectors uniformly. One segment per state.
-            segments = array_split(vectors, n_states)
+            segments = array_split(seq, n_states)
 
             # Concatenate each segments[i] with the segments[i] obtained
             # at the previous iteration
@@ -266,7 +299,7 @@ class Model(object):
                 
                 # the covariance matrix of our multivariate gaussian
                 array_covariance_matrix(all_segments[i],
-                                             non_diagonal=self.NON_DIAGONAL)
+                                        non_diagonal=self.NON_DIAGONAL)
                 
             ])
 
@@ -280,18 +313,16 @@ class Model(object):
         A = self.get_state_transition_matrix(n_states)
         B = self.get_emission_matrix(n_states, sset)
 
-        hmm = ghmm.HMMFromMatrices(
-                    self.DOMAIN,
-                    ghmm.MultivariateGaussianDistribution(self.DOMAIN),
-                    A,
-                    B,
-                    pi)
+        hmm = MultivariateHmm(A, B, pi)
         
         return hmm
           
 
     def init(self):
         """Init HMMs"""
+
+        self.load_char_dicts()
+
         feature_files = self.get_train_feature_files()
 
         if len(feature_files) == 0:
@@ -313,9 +344,6 @@ class Model(object):
 
             self.print_verbose(output_file)
 
-            if os.path.exists(output_file):
-                os.unlink(output_file)
-
             hmm.write(output_file)
 
     ########################################
@@ -334,24 +362,28 @@ class Model(object):
         
         if not os.path.exists(self.TRAIN_HMM_ROOT):
             os.makedirs(self.TRAIN_HMM_ROOT)
+
+        trainer = self.Trainer()
+        viterbi_trainer = ViterbiTrainer(self.ViterbiCalculator(),
+                                         non_diagonal=self.NON_DIAGONAL)
         
         for file in initial_hmm_files:
             char_code = int(os.path.basename(file).split(".")[0])
-            hmm = ghmm.HMMOpen(file)
+            hmm = MultivariateHmm.from_file(file)
             sset_file = os.path.join(self.TRAIN_FEATURES_ROOT,
                                      str(char_code) + ".sset")
 
             sset = self.get_sequence_set(sset_file)
-
-            hmm.baumWelch(sset)
-
             output_file = os.path.join(self.TRAIN_HMM_ROOT,
                                        "%d.xml" % char_code)
 
-            self.print_verbose(output_file)
+            if self.TRAINING in (self.TRAINING_VITERBI, self.TRAINING_BOTH):
+                self.print_verbose("Viterbi training: " + output_file)
+                viterbi_trainer.train(hmm, sset)
 
-            if os.path.exists(output_file):
-                os.unlink(output_file)
+            if self.TRAINING in (self.TRAINING_BAUM_WELCH, self.TRAINING_BOTH):
+                self.print_verbose("Baum-Welch training: " + output_file)
+                trainer.train(hmm, sset)
 
             hmm.write(output_file)
 
@@ -368,13 +400,17 @@ class Model(object):
     def eval_sequence(self, seq, hmms):
         res = []
         
+        calculator = self.ViterbiCalculator()
+
         for hmm in hmms:
-            logp = hmm.viterbi(seq)[1]
+            logp = calculator.viterbi(hmm, seq)[1]
             res.append([hmm.char_code, logp])
 
-        if seq.__class__.__name__ == ghmm.SequenceSet:
+        if str(seq.__class__.__name__) == "SequenceSet":
+            # logp contains an array of log probabilities
             res.sort(key=lambda x:array_mean(x[1]), reverse=True)
         else:
+            # logp contains a scalar
             res.sort(key=lambda x:x[1], reverse=True)
 
         return res
@@ -384,7 +420,7 @@ class Model(object):
         
         for file in files:
             char_code = int(os.path.basename(file).split(".")[0])
-            hmm = ghmm.HMMOpen(file)
+            hmm = MultivariateHmm.from_file(file)
             hmm.char_code = char_code     
             hmms.append(hmm)
             
@@ -403,38 +439,46 @@ class Model(object):
         n_match1 = 0
         n_match5 = 0
         n_match10 = 0
+        char_codes = {}
 
         s = ""
         
         for file in self.get_eval_feature_files():
             char_code = int(os.path.basename(file).split(".")[0])
+            char_codes[char_code] = 1
             sset = self.get_sequence_set(file)
 
-            # evaluate all evaluation sets at the same time
-            res = [x[0] for x in self.eval_sequence(sset, hmms)][:10]
+            for seq in sset:
+                res = [x[0] for x in self.eval_sequence(seq, hmms)][:10]
 
-            if char_code in res:
-                n_match10 += 1 
+                if char_code in res:
+                    n_match10 += 1 
 
-            if char_code in res[:5]:
-                n_match5 += 1
+                if char_code in res[:5]:
+                    n_match5 += 1
 
-                position = str(res.index(char_code) + 1)
+                    position = str(res.index(char_code) + 1)
+                else:
+                    position = "X"
+
                 matches = ", ".join([self.get_utf8_from_char_code(x) \
                                         for x in res[:5]])
-            else:
-                position = "X"
-                matches = ""
 
-            if char_code == res[0]:
-                n_match1 += 1
+                if char_code == res[0]:
+                    n_match1 += 1
 
-            utf8 = self.get_utf8_from_char_code(char_code)
+                utf8 = self.get_utf8_from_char_code(char_code)
 
-            s += "%s\t%s\t%s\n" % (utf8, position, matches)
+                s += "%s\t%s\t%s\n" % (utf8, position, matches)
 
-            n_total += 1
+                n_total += 1
 
+            self.print_verbose(file)
+
+        n_classes = len(char_codes.keys())
+
+        self.stderr_print("%d characters (%d samples)" % \
+                           (n_classes, n_total))
         self.stderr_print("match1: ",
                           float(n_match1)/float(n_total) * 100,
                           "%")
@@ -452,10 +496,7 @@ class Model(object):
     ########################################
 
     def find_writing(self, writing):
-        char_features = self.get_feature_vectors(writing)
-        
-        seq = ghmm.EmissionSequence(self.DOMAIN,
-                                    array_flatten(char_features))
+        seq = Sequence(self.get_feature_vectors(writing))
         trained_hmm_files = self.get_trained_hmm_files()
 
         if len(trained_hmm_files) == 0:

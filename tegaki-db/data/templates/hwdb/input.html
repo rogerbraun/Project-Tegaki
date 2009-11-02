@@ -1,11 +1,11 @@
 {% extends "base/base.html" %}
 
+
 {% block bread_crumbs %}
-        <a href="{% url hwdb %}">HWDB</a> ::
-                <span class="active-crumb"> Input - {{char}}</span>
+    <a href="{% url hwdb %}">Home</a> :: <span class="active-crumb"> Input </span> <span class="active-crumb"> {{char}} </span>
 {% endblock %}
 
-
+{% block input_li_class %}class="cur_link"{% endblock %}
 
 {% block title %}Tegaki-db - Latest news{% endblock %}
 {% block extrahead %}
@@ -25,6 +25,11 @@ function load()
 dojo.addOnLoad(load);
 
 var character='{{char}}';
+
+function clearAll()
+{
+    ricepaper.clear();
+}
 
 function submitDrawing(){
     w = ricepaper.character.get_writing();
@@ -50,21 +55,32 @@ function submitDrawing(){
 {% endblock %}
 
 {% block content %}
-<h1>Input:</h1>
-<span id="char" style="font-size:5em">{{char}}</span>
+<div id="input_wrapper">
+    <h1>Input</h1>      
+    <div id="input_header_charset">
+    {% if request.session.current_charset %}
+                    Selected Character Set: <span class="cur_content_link"><a href="{% url hwdb-view-charset %}?id={{ request.session.current_charset.id }}">{{request.session.current_charset}}</a></span>
+                    |
+                    <a href="{% url hwdb-charsets %}">Change Charset</a> 
+                    <a href="{% url hwdb-create-charset %}">New Character Set</a>
+                {% else %}
+                    No Character Set Selected,<a href="{% url hwdb-charsets %}">Select A Charset</a> or <a href="{% url hwdb-create-charset %}">Create A Character Set</a>
+                {% endif %}
+    </div>
 
 
-<div id="ricepaper" class="ricepaper"></div>
+    <div id="character_wrapper">
+        <div id="ricepaper" class="ricepaper"></div>
+        <div id="char">{{char}}</div>
         <br class="clear"/>
-	<br />
-	<input type="button" id="submitBut" name="submit" value="Submit" onclick="submitDrawing();">
-	<input type="button" id="clearBut" name="clear" onclick="clearAll();" value="Clear">
+        <br />
+        <input type="button" id="submitBut" name="submit" value="Submit" onclick="submitDrawing();">
+        <input type="button" id="clearBut" name="clear" onclick="clearAll();" value="Clear">
 
+        <br class="clear">
+        <div id="input-desc" style="float:left;width:500px;">
+            Submitting your character creates a handwriting sample in the database corresponding to the displayed character. Once you submit, a new character will be automatically selected at random for you to draw
+        </div>	
+    </div>
 </div>
-<br class="clear">
-<div id="input-desc" style="float:left;width:500px;">
-<p>
-Submitting your character creates a handwriting sample in the database corresponding to the displayed character. Once you submit, a new character will be automatically selected at random for you to draw
-</p>
-</div>	
 {% endblock %}

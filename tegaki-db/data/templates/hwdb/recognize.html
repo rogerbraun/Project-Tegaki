@@ -45,6 +45,12 @@ function clearAll()
 </script>
 {% endblock %}
 
+{% block recognize_li_class %}class="cur_link"{% endblock %}
+
+{% block bread_crumbs %}
+    <a href="{% url hwdb %}">Home</a> :: <span class="active-crumb"> Recognize </span>
+{% endblock %}
+
 {% block content %}
 <h1>Recognize</h1>
 

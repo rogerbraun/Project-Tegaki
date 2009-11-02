@@ -1,12 +1,13 @@
 .ricepaper
 {
-    float:left;
-    position:relative;
-    margin-top:20px;
-    margin-left:20px;
-    width:400px;
-    height:400px;
-    border:1px solid black;
+background:#D5C6AB none repeat scroll 0 0;
+border:1px solid black;
+float:left;
+height:400px;
+margin-left:20px;
+margin-top:20px;
+position:relative;
+width:400px;
 }
 
 .inputTextChar

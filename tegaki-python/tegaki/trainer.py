@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright (C) 2008 The Tegaki project contributors
+# Copyright (C) 2008-2009 The Tegaki project contributors
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,27 +21,75 @@
 
 import glob
 import os
+import imp
+from cStringIO import StringIO
 
-from dictutils import SortedDict
+from tegaki.dictutils import SortedDict
 
 class TrainerError(Exception):
     pass
 
-class Trainer:
+class Trainer(object):
 
     def __init__(self):
         pass
    
-    @staticmethod
-    def get_available_trainers():
-        trainers = SortedDict()
+    @classmethod
+    def get_available_trainers(cls):
+        if not "available_trainers" in cls.__dict__:
+            cls._load_available_trainers()
+        return cls.available_trainers
+
+    @classmethod
+    def _load_available_trainers(cls):
+        cls.available_trainers  = SortedDict()
+
+        currdir = os.path.dirname(os.path.abspath(__file__))
 
         try:
-            trainers["zinnia"] = ZinniaTrainer
-        except NameError:
-            pass
+            # UNIX
+            homedir = os.environ['HOME']
+        except KeyError:
+            # Windows
+            homedir = os.environ['USERPROFILE']
 
-        return trainers   
+        # FIXME: use $prefix defined in setup
+        search_path = ["/usr/local/share/tegaki/engines/",
+                       "/usr/share/tegaki/engines/",
+                       # for Maemo
+                       "/media/mmc1/tegaki/engines/",
+                       "/media/mmc2/tegaki/engines/",
+                       # personal directory
+                       os.path.join(homedir, ".tegaki", "engines"),     
+                       os.path.join(currdir, "engines")]
+
+        if 'TEGAKI_ENGINE_PATH' in os.environ and \
+            os.environ['TEGAKI_ENGINE_PATH'].strip() != "":
+            search_path += os.environ['TEGAKI_ENGINE_PATH'].strip().split(":")
+
+        for directory in search_path:
+            if not os.path.exists(directory):
+                continue
+
+            for f in glob.glob(os.path.join(directory, "*.py")):
+                if f.endswith("__init__.py") or f.endswith("setup.py"):
+                    continue
+
+                module_name = os.path.basename(f).replace(".py", "")
+                module_name += "trainer"
+                module = imp.load_source(module_name, f)
+
+                try:
+                    name = module.TRAINER_CLASS.TRAINER_NAME
+                    cls.available_trainers[name] = module.TRAINER_CLASS
+                except AttributeError:
+                    pass         
+
+    def set_options(self, options):
+        """
+        Process trainer/model specific options.
+        """
+        pass
 
     # To be implemented by child class
     def train(self, character_collection, meta):
@@ -61,45 +109,18 @@ class Trainer:
             raise TrainerError, "meta must contain a name and a shortname"
 
     def _write_meta_file(self, meta, meta_file):
-        f = open(meta_file, "w")
+        io = StringIO()
         for k,v in meta.items():
-            f.write("%s = %s\n" % (k,v))
+            io.write("%s = %s\n" % (k,v))
+
+        if os.path.exists(meta_file):
+            f = open(meta_file)
+            contents = f.read() 
+            f.close()
+            # don't rewrite the file if same
+            if io.getvalue() == contents:
+                return
+
+        f = open(meta_file, "w")
+        f.write(io.getvalue())
         f.close()
-
-try:
-    import zinnia
-
-    class ZinniaTrainer(Trainer):
-
-        def __init__(self):
-            Trainer.__init__(self)
-
-        def train(self, charcol, meta, path=None):
-            self._check_meta(meta)
-
-            trainer = zinnia.Trainer()
-            zinnia_char = zinnia.Character()
-
-            for set_name in charcol.get_set_list():
-                for character in charcol.get_characters(set_name):      
-                    if (not zinnia_char.parse(character.to_sexp())):
-                        raise TrainerError, zinnia_char.what()
-                    else:
-                        trainer.add(zinnia_char)
-
-            if not path:
-                if "path" in meta:
-                    path = meta["path"]
-                else:
-                    path = os.path.join(os.environ['HOME'], ".tegaki", "models",
-                                        "zinnia", meta["name"] + ".model")
-
-            meta_file = path.replace(".model", ".meta")
-            if not meta_file.endswith(".meta"): meta_file += ".meta"
-            
-            trainer.train(path)
-            self._write_meta_file(meta, meta_file)
-
-except ImportError:
-    pass
-

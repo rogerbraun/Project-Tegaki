@@ -32,7 +32,7 @@ from tegaki.trainer import Trainer
 from tegakigtk.iconview import WritingIconView, _WritingPixbufRenderer
 from tegakigtk.canvas import Canvas
 
-VERSION = '0.2'
+VERSION = '0.3'
 
 PREDEFINED_SETS = {
 "Digits" : [[48,57]],
@@ -330,7 +330,10 @@ class EditCharacterSampleWindow(gtk.Window):
         self._clear_button = gtk.Button(stock=gtk.STOCK_CLEAR)
         self._clear_button.connect("clicked", self._on_clear)
         hbox.pack_start(self._clear_button)
-        vbox.pack_start(hbox)
+        self._replay_button = gtk.Button(stock=gtk.STOCK_MEDIA_PLAY)
+        self._replay_button.connect("clicked", self._on_replay)
+        hbox.pack_start(self._replay_button)  
+        vbox.pack_start(hbox)      
 
         align = gtk.Alignment(xalign=0.5, yalign=0.0, xscale=0.0, yscale=0.0)
         vbox2 = gtk.VBox()
@@ -358,6 +361,9 @@ class EditCharacterSampleWindow(gtk.Window):
 
     def _on_clear(self, widget):
         self._canvas.clear()
+
+    def _on_replay(self, widget):
+        self._canvas.replay()
 
     def get_character_value(self):
         return self._entry.get_text().strip()
@@ -602,6 +608,11 @@ class TegakiTrain(object):
             self._treeview.get_model().clear()
             self._iconview.get_model().clear()
 
+    def _display_charcol_stats(self):
+        msg = "%d sets (%d characters) loaded!" % \
+            (self._charcol.get_n_sets(), self._charcol.get_total_n_characters())
+        self._statusbar_push(msg, sec=5)
+
     def _on_open(self, widget):
         if not self._save_is_enabled() or self._confirm_continue():
             dialog = CharacterCollectionFileChooserDialog(
@@ -624,6 +635,7 @@ class TegakiTrain(object):
                     self._iconview.get_model().clear()
                     self._refresh_treeview()
                     self._disable_save()
+                    self._display_charcol_stats()
 
             dialog.destroy()
 
@@ -636,6 +648,7 @@ class TegakiTrain(object):
         self._iconview.get_model().clear()
         self._refresh_treeview()
         self._disable_save()
+        self._display_charcol_stats()
 
     def _add_recent(self, filename):
         meta = {'mime_type':'text/xml', 'app_name':'tegaki-train',

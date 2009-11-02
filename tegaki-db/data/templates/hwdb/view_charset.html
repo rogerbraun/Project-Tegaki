@@ -1,10 +1,10 @@
 {% extends "base/base.html" %}
 
 {% block bread_crumbs %}
-        <a href="{% url hwdb %}">HWDB</a> :: <a href="{% url hwdb-charsets %}">Character Sets</a> ::
-                <span class="active-crumb">Character Set - {{charset.name}}</span>
+       <a href="{% url hwdb-charsets %}">Character Sets</a> :: <span class="active-crumb">Character Set  {{charset.name}}</span>
 {% endblock %}
 
+{% block charsets_li_class %}class="cur_link"{% endblock %}
 
 {% block title %}Tegaki-db - Character Set: {{charset.name}}{% endblock %}
 

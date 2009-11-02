@@ -1,0 +1,39 @@
+tegaki-wagomu
+=============
+
+Simple handwriting recognition engine based on DTW.
+
+Requirements
+------------
+
+Python        2.4    http://www.python.org
+tegaki-python 0.3   
+
+Compile
+-------
+
+$ python setup.py build
+
+Better performance may be obtained by increasing the level of optimization:
+$ CFLAGS="-O3" python setup.py build
+
+On Intel/AMD, better performance can be obtained by turning on SIMD (SSE)
+instructions:
+$ CFLAGS="-O3 -msse" python setup.py build
+
+Install
+-------
+
+($ su)
+# python setup.py install
+
+License
+-------
+
+This package is distributed under the terms of the GNU General Public
+License. See the COPYING file for more information.
+
+Homepage
+--------
+
+http://www.tegaki.org
