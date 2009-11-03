@@ -144,6 +144,10 @@ class Stroke(list):
     def append_point(self, point):
         self.append(point)
 
+    def append_points(self, points):
+        for point in points:
+            self.append_point(point)
+
     def to_xml(self):
         s = "<stroke>\n"
 

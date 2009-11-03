@@ -19,112 +19,166 @@
 
 # Contributors to this file:
 # - Mathieu Blondel
+# - Roger Braun
+#
+# -------------
+# NOTES:
+# 
+# This will read the KanjiVG xml files you can find at 
+# http://kanjivg.tagaini.net/.
+# Search for "resolution" if you want to control how many points are being
+# created for the tegaki-xml. 
+# I'm not that good at python, so if anything looks strange to you, it may very
+# well be just that. You can see still see the remains of my serious printf-
+# debugging. I'm sorry.
+# Converting the full file takes a lot of time, so be warned.
+# 
 
 from tegaki.character import Point, Stroke, Writing, Character, \
                              CharacterCollection, _XmlBase
-from math import sqrt                             
+from math import sqrt  
+
+from pyparsing import *
 
 class SVG_Point(Point):
     def add(self, point):
-        return Point(self.x + point.x, self.y + point.y)
+        return SVG_Point(self.x + point.x, self.y + point.y)
 
     def subtract(self, point):
-        return Point(self.x - point.x, self.y - point.y)
+        return SVG_Point(self.x - point.x, self.y - point.y)
 
     def dist(self, point):
         return sqrt((point.x - self.x) ** 2 + (point.y - self.y) ** 2)
 
     def multiply(self, number):
-        return Point(self.x * number, self.y * number)
+        return SVG_Point(self.x * number, self.y * number)
 
-class SVG_M:
+    def reflect(self, mirror):
+        return mirror.add(mirror.subtract(self))
+    
 
-    def __init__(self, p1, p2 = Point(0,0)):
-        self._p = p1 + p2;
+class SVG_Parser:
 
-    def to_points(self):
-        return []
+    def __init__(self, svg):
+        self._svg = svg
+        self._points = []
+        #print "\nEntering Parser"
+	#print "SVG: " +svg
 
-    def current_cursor(self):
-        return self._p
 
-class SVG_C:
-
-    def __init__(self,c1,c2,p,current_cursor):
-        self._c1 = c1
-        self._c2 = c2
-        self._p = p
-        self._current_cursor = current_cursor
-
-    def second_point(self):
-        return _c2
-
+    def get_points(self):
+        return self._points
+    
     def linear_interpolation(self,a,b,factor):
+        #print "\nlinear_interpolation..."
+	#print factor
         xr = a.x + ((b.x - a.x) * factor)
         yr = a.y + ((b.y - a.y) * factor)
-        return Point(xr,yr)
+        return SVG_Point(xr,yr)
 
-    def make_curvepoint(self,factor):
-        ab = linear_interpolation(self._current_cursor,self._c1,factor)
-        bc = linear_interpolation(self._c1,self._c2,factor)
-        cd = linear_interpolation(self._c2,self._p,factor)
+    def make_curvepoint(self,c1,c2,p,current_cursor,factor):
+        #print "\nmake_curvepoint..."
+        ab = self.linear_interpolation(current_cursor,c1,factor)
+        bc = self.linear_interpolation(c1,c2,factor)
+        cd = self.linear_interpolation(c2,p,factor)
+        #print ab
+	#print bc
+	#print cd
+        abbc = self.linear_interpolation(ab,bc,factor)
+        bccd = self.linear_interpolation(bc,cd,factor)
+        return self.linear_interpolation(abbc, bccd, factor)
 
-        abbc = linear_interpolation(ab,bc,factor)
-        bccd = linear_interpolation(bc,cd,factor)
-        return linear_interpolation(abbc, bccd, factor)
-
-    def length(self,points):
-        old_point = self._current_cursor
+    def length(self,c1,c2,p,current_cursor,points):
+        old_point = current_cursor
         length = 0.0
         factor = points
 
-        for i in range(1, points):
-            new_point = make_curvepoint(point/factor)
+        for i in range(1, int(points)):
+	 #   print "i: " + str(i)
+            new_point = self.make_curvepoint(c1,c2,p,current_cursor,i/factor)
+	 #   print "New Point: " + str(new_point)
             length += old_point.dist(new_point)
             old_point = new_point
 
         return length
 
-    def make_curvepoints_array(self, distance):
+    def make_curvepoints_array(self,c1,c2,p,current_cursor,distance):
+        #print "\nmake_curvepoints_array..."
         result = []
-        l = length(20)
+        l = self.length(c1,c2,p,current_cursor,10.0)
         points = l * distance
         factor = points
-
-        for i in range(0, points):
-            result.append(make_curvepoint(point / factor))
-
-        return result
-
-    def to_points(self):
-        return make_curvepoints_array(0.3)
-
-    def current_cursor(self):
-        return self._p
-
-
-
-
-
-
-
-
-
-class KanjiVGReader:
-    def __init__(self):
-        self._charcol = CharacterCollection()
+	#print "Length:" + str(l)
+        #print "Factor: " + str(factor)
+        for i in range(0, int(points)):
+            self._points.append(self.make_curvepoint(c1,c2,p,current_cursor,i / factor)) 
         
-    def get_character_collection(self):
-        return self._charcol
-    
-    def read (self, path):
-        return
-    
+        #print self._points
 
-    
-    
+    def parse(self):
+        # print "\nParsing..."
+        # Taken and (rather heavily) modified from http://annarchy.cairographics.org/svgtopycairo/
+        dot = Literal(".")
+        comma = Literal(",").suppress()
+        floater = Combine(Optional("-") + Word(nums) + Optional(dot + Word(nums)))
+        floater.setParseAction(lambda toks:float(toks[0]))
+        couple = floater + Optional(comma) + floater
+        M_command = "M" + Group(couple)
+        C_command = "C" + Group(couple + Optional(comma) + couple + Optional(comma) + couple)
+        L_command = "L" + Group(couple)
+        Z_command = "Z"
+        c_command = "c" + Group(couple + Optional(comma) + couple + Optional(comma) + couple)
+        s_command = "s" + Group(couple + Optional(comma) + couple)
+        S_command = "S" + Group(couple + Optional(comma) + couple)
+        svgcommand = M_command | C_command | L_command | Z_command | c_command | s_command | S_command
+        phrase = OneOrMore(Group(svgcommand)) 
+	self._svg_array = phrase.parseString(self._svg)
+        self.make_points()
+	#print self._points
 
-class TomoeXmlDictionaryReader(_XmlBase):
+    def resize(self,n):
+        return n * 1000.0 / 109.0
+
+    def make_points(self):
+        current_cursor = SVG_Point(0,0)
+	# ATTENTION: This is the place where you can change the resolution of the created xmls, i.e. how many points are generated. Higher value = More points
+        resolution = 0.1
+        for command in self._svg_array:
+            #print command    
+            if command[0] == "M":
+                point = SVG_Point(self.resize(command[1][0]),self.resize(command[1][1]))
+                self._points.append(point)
+                current_cursor = point
+
+            if command[0] == "c":
+                c1 = SVG_Point(self.resize(command[1][0]),self.resize(command[1][1])).add(current_cursor) 
+                c2 = SVG_Point(self.resize(command[1][2]),self.resize(command[1][3])).add(current_cursor)
+                p  = SVG_Point(self.resize(command[1][4]),self.resize(command[1][5])).add(current_cursor)
+                self.make_curvepoints_array(c1,c2,p,current_cursor,resolution)             
+                current_cursor = self._points[-1]
+
+            if command[0] == "C":
+                c1 = SVG_Point(self.resize(command[1][0]),self.resize(command[1][1])) 
+                c2 = SVG_Point(self.resize(command[1][2]),self.resize(command[1][3]))
+                p  = SVG_Point(self.resize(command[1][4]),self.resize(command[1][5]))
+                self.make_curvepoints_array(c1,c2,p,current_cursor,resolution)             
+                current_cursor = self._points[-1]
+
+            if command[0] == "s":
+                c2 = SVG_Point(self.resize(command[1][0]),self.resize(command[1][1])).add(current_cursor) 
+                p = SVG_Point(self.resize(command[1][2]),self.resize(command[1][3])).add(current_cursor)
+                c1 = self._points[-2].reflect(current_cursor)
+                self.make_curvepoints_array(c1,c2,p,current_cursor,resolution)             
+                current_cursor = self._points[-1]	    
+
+            if command[0] == "S":
+                c2 = SVG_Point(self.resize(command[1][0]),self.resize(command[1][1])) 
+                p = SVG_Point(self.resize(command[1][2]),self.resize(command[1][3]))
+                c1 = self._points[-2].reflect(current_cursor)
+                self.make_curvepoints_array(c1,c2,p,current_cursor,resolution)             
+                current_cursor = self._points[-1]	    
+    
+class KVGXmlDictionaryReader(_XmlBase):
 
     def __init__(self):
         self._charcol = CharacterCollection()
@@ -137,40 +191,31 @@ class TomoeXmlDictionaryReader(_XmlBase):
 
         if self._first_tag:
             self._first_tag = False
-            if self._tag != "dictionary":
-                raise ValueError, "The very first tag should be <dictionary>"
+            if self._tag != "kanjis":
+                raise ValueError, "The very first tag should be <kanjis>"
 
-        if self._tag == "character":
+        if self._tag == "kanji":
             self._writing = Writing()
+            self._utf8 = attrs["midashi"].encode("UTF-8")
 
         if self._tag == "stroke":
             self._stroke = Stroke()
+            if attrs.has_key("path"):
+                self._stroke_svg = attrs["path"].encode("UTF-8")
+                svg_parser = SVG_Parser(self._stroke_svg) 
+	        svg_parser.parse()
+                self._stroke.append_points(svg_parser.get_points())
+            else:
+                print "Missing path in <stroke> element: " + self._utf8
+		
             
-        elif self._tag == "point":
-            point = Point()
-
-            for key in ("x", "y", "pressure", "xtilt", "ytilt", "timestamp"):
-                if attrs.has_key(key):
-                    value = attrs[key].encode("UTF-8")
-                    if key in ("pressure", "xtilt", "ytilt"):
-                        value = float(value)
-                    else:
-                        value = int(float(value))
-                else:
-                    value = None
-
-                setattr(point, key, value)
-
-            self._stroke.append_point(point)
-
     def _end_element(self, name):
-        if name == "character":
+        if name == "kanji":
             char = Character()
             char.set_utf8(self._utf8)
             char.set_writing(self._writing)
             self._charcol.add_set(self._utf8)
             self._charcol.append_character(self._utf8, char)
-
             for s in ["_tag", "_stroke"]:
                 if s in self.__dict__:
                     del self.__dict__[s]
@@ -189,8 +234,8 @@ class TomoeXmlDictionaryReader(_XmlBase):
         elif self._tag == "height":
             self._writing.set_height(int(data))
 
-def tomoe_dict_to_character_collection(path):
-    reader = TomoeXmlDictionaryReader()
+def kvg_to_character_collection(path):
+    reader = KVGXmlDictionaryReader()
     gzip = False; bz2 = False
     if path.endswith(".gz"): gzip = True
     if path.endswith(".bz2"): bz2 = True
