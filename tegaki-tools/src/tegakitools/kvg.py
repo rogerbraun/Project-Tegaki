@@ -50,9 +50,6 @@ class SVG_Point(Point):
     def dist(self, point):
         return sqrt((point.x - self.x) ** 2 + (point.y - self.y) ** 2)
 
-    def multiply(self, number):
-        return SVG_Point(self.x * number, self.y * number)
-
     def reflect(self, mirror):
         return mirror.add(mirror.subtract(self))
     
@@ -89,17 +86,9 @@ class SVG_Parser:
         return self.linear_interpolation(abbc, bccd, factor)
 
     def length(self,c1,c2,p,current_cursor,points):
-        old_point = current_cursor
-        length = 0.0
-        factor = points
-
-        for i in range(1, int(points)):
-	 #   print "i: " + str(i)
-            new_point = self.make_curvepoint(c1,c2,p,current_cursor,i/factor)
-	 #   print "New Point: " + str(new_point)
-            length += old_point.dist(new_point)
-            old_point = new_point
-
+        
+        length = current_cursor.distance(p)   
+        
         return length
 
     def make_curvepoints_array(self,c1,c2,p,current_cursor,distance):
