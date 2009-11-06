@@ -87,7 +87,7 @@ class SVG_Parser:
 
     def length(self,c1,c2,p,current_cursor,points):
         
-        length = current_cursor.distance(p)   
+        length = current_cursor.dist(p)   
         
         return length
 
