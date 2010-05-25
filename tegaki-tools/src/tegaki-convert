@@ -59,6 +59,7 @@ class TegakiConvert(object):
                          (TYPE_CHARCOL_DB, self._databases),
                          (TYPE_DIRECTORY, self._directories),
                          (TYPE_TOMOE, self._tomoe),
+                         (TYPE_KVG, self._kvg),
                          (TYPE_KUCHIBUE, self._kuchibue)), self._output_path)
 
 

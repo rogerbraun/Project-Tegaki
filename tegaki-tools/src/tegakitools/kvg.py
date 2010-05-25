@@ -35,7 +35,10 @@
 # 
 
 from tegaki.character import Point, Stroke, Writing, Character, \
-                             CharacterCollection, _XmlBase
+                             _XmlBase
+
+from tegaki.charcol import CharacterCollection
+
 from math import sqrt  
 
 from pyparsing import *
@@ -62,28 +65,19 @@ class SVG_Parser:
     def __init__(self, svg):
         self._svg = svg
         self._points = []
-        #print "\nEntering Parser"
-	#print "SVG: " +svg
-
 
     def get_points(self):
         return self._points
     
     def linear_interpolation(self,a,b,factor):
-        #print "\nlinear_interpolation..."
-	#print factor
         xr = a.x + ((b.x - a.x) * factor)
         yr = a.y + ((b.y - a.y) * factor)
         return SVG_Point(xr,yr)
 
     def make_curvepoint(self,c1,c2,p,current_cursor,factor):
-        #print "\nmake_curvepoint..."
         ab = self.linear_interpolation(current_cursor,c1,factor)
         bc = self.linear_interpolation(c1,c2,factor)
         cd = self.linear_interpolation(c2,p,factor)
-        #print ab
-	#print bc
-	#print cd
         abbc = self.linear_interpolation(ab,bc,factor)
         bccd = self.linear_interpolation(bc,cd,factor)
         return self.linear_interpolation(abbc, bccd, factor)
@@ -94,29 +88,22 @@ class SVG_Parser:
         factor = points
 
         for i in range(1, int(points)):
-	 #   print "i: " + str(i)
             new_point = self.make_curvepoint(c1,c2,p,current_cursor,i/factor)
-	 #   print "New Point: " + str(new_point)
             length += old_point.dist(new_point)
             old_point = new_point
 
         return length
 
     def make_curvepoints_array(self,c1,c2,p,current_cursor,distance):
-        #print "\nmake_curvepoints_array..."
         result = []
         l = self.length(c1,c2,p,current_cursor,10.0)
         points = l * distance
         factor = points
-	#print "Length:" + str(l)
-        #print "Factor: " + str(factor)
         for i in range(0, int(points)):
             self._points.append(self.make_curvepoint(c1,c2,p,current_cursor,i / factor)) 
         
-        #print self._points
 
     def parse(self):
-        # print "\nParsing..."
         # Taken and (rather heavily) modified from http://annarchy.cairographics.org/svgtopycairo/
         dot = Literal(".")
         comma = Literal(",").suppress()
@@ -132,9 +119,12 @@ class SVG_Parser:
         S_command = "S" + Group(couple + Optional(comma) + couple)
         svgcommand = M_command | C_command | L_command | Z_command | c_command | s_command | S_command
         phrase = OneOrMore(Group(svgcommand)) 
-	self._svg_array = phrase.parseString(self._svg)
-        self.make_points()
-	#print self._points
+        try:
+          self._svg_array = phrase.parseString(self._svg)
+          self.make_points()
+        except:
+          print "Something went wrong while parsing..."
+          raise
 
     def resize(self,n):
         return n * 1000.0 / 109.0
@@ -202,9 +192,12 @@ class KVGXmlDictionaryReader(_XmlBase):
             self._stroke = Stroke()
             if attrs.has_key("path"):
                 self._stroke_svg = attrs["path"].encode("UTF-8")
-                svg_parser = SVG_Parser(self._stroke_svg) 
-	        svg_parser.parse()
-                self._stroke.append_points(svg_parser.get_points())
+                try:
+                  svg_parser = SVG_Parser(self._stroke_svg) 
+                  svg_parser.parse()
+                  self._stroke.append_points(svg_parser.get_points())
+                except:
+                  print "Something went wrong in this character: " + self._utf8
             else:
                 print "Missing path in <stroke> element: " + self._utf8
 		
