@@ -19,6 +19,7 @@
 /* 
 * Contributors to this file:
 *  - Mathieu Blondel
+*  - Shawn M Moore
 */
 
 /* Internal canvas size */
@@ -115,17 +116,40 @@ WebCanvas.prototype._initListeners = function() {
                                 callback(this, this._onButtonReleased));                                     
     }
     else if (this.canvas.addEventListener) {
-        this.canvas.addEventListener("mousemove",
-                                     callback(this, this._onMove), false);
-        this.canvas.addEventListener("mousedown",
-                                     callback(this, this._onButtonPressed),
-                                              false);
-        this.canvas.addEventListener("mouseup",
-                                     callback(this, this._onButtonReleased),
-                                     false);
-        this.canvas.addEventListener("mouseout",
-                                     callback(this, this._onButtonReleased),
-                                     false);                                     
+        // Browser sniffing is evil, but I can't figure out a good way to ask in
+        // advance if this browser will send touch or mouse events.
+        // If we generate both touch and mouse events, the canvas gets confused
+        // on iPhone/iTouch with the "revert stroke" command
+        if (navigator.userAgent.toLowerCase().indexOf('iphone')!=-1) {
+            // iPhone/iTouch events
+            this.canvas.addEventListener("touchstart",
+                                        callback(this, this._onButtonPressed),
+                                                false);
+            this.canvas.addEventListener("touchend",
+                                        callback(this, this._onButtonReleased),
+                                        false);
+            this.canvas.addEventListener("touchcancel",
+                                        callback(this, this._onButtonReleased),
+                                        false);
+            this.canvas.addEventListener("touchmove",
+                                        callback(this, this._onMove), false);
+
+            // Disable page scrolling via dragging inside the canvas
+            this.canvas.addEventListener("touchmove", function(e){e.preventDefault();}, false);
+        }
+        else {
+            this.canvas.addEventListener("mousemove",
+                                        callback(this, this._onMove), false);
+            this.canvas.addEventListener("mousedown",
+                                        callback(this, this._onButtonPressed),
+                                                false);
+            this.canvas.addEventListener("mouseup",
+                                        callback(this, this._onButtonReleased),
+                                        false);
+            this.canvas.addEventListener("mouseout",
+                                        callback(this, this._onButtonReleased),
+                                        false);
+        }
     }
     else
         alert("Your browser does not support interaction.");
@@ -133,7 +157,11 @@ WebCanvas.prototype._initListeners = function() {
 
 WebCanvas.prototype._onButtonPressed = function(event) {
     if (this.locked) return;
-    
+
+    // this can occur with an iPhone/iTouch when we try to drag two fingers
+    // on the canvas, causing a second smaller canvas to appear
+    if (this.buttonPressed) return;
+
     this.buttonPressed = true;
 
     var position = this._getRelativePosition(event);
@@ -205,8 +233,19 @@ WebCanvas.prototype._onMove = function(event) {
 
 WebCanvas.prototype._getRelativePosition = function(event) {
     var t = this.canvas;
-    var x = event.clientX + (window.pageXOffset || 0);
-    var y = event.clientY + (window.pageYOffset || 0);
+
+    var x, y;
+    // targetTouches is iPhone/iTouch-specific; it's a list of finger drags
+    if (event.targetTouches) {
+       var e = event.targetTouches[0];
+
+       x = e.pageX;
+       y = e.pageY;
+    }
+    else {
+        x = event.clientX + (window.pageXOffset || 0);
+        y = event.clientY + (window.pageYOffset || 0);
+    }
 
     do
         x -= t.offsetLeft + parseInt(t.style.borderLeftWidth || 0),

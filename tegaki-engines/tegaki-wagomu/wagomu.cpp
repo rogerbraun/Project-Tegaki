@@ -26,8 +26,12 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
-#include <inttypes.h>
+
+#ifdef HAVE_MEMALIGN
 #include <malloc.h>
+#else
+#define memalign(a,b) malloc((b))
+#endif
 
 #include "wagomu.h"
 

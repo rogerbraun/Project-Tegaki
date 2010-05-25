@@ -24,18 +24,34 @@ import os
 import imp
 from cStringIO import StringIO
 
+from tegaki.engine import Engine
 from tegaki.dictutils import SortedDict
 
 class TrainerError(Exception):
+    """
+    Raised when something went wrong in a Trainer.
+    """
     pass
 
-class Trainer(object):
+class Trainer(Engine):
+    """
+    Base Trainer class.
+
+    A trainer can train models based on sample data annotated with labels.
+    """
 
     def __init__(self):
         pass
    
     @classmethod
     def get_available_trainers(cls):
+        """
+        Return trainers installed on the system.
+
+        @rtype: dict
+        @return: a dict where keys are trainer names and values \
+                 are trainer classes
+        """
         if not "available_trainers" in cls.__dict__:
             cls._load_available_trainers()
         return cls.available_trainers
@@ -44,30 +60,7 @@ class Trainer(object):
     def _load_available_trainers(cls):
         cls.available_trainers  = SortedDict()
 
-        currdir = os.path.dirname(os.path.abspath(__file__))
-
-        try:
-            # UNIX
-            homedir = os.environ['HOME']
-        except KeyError:
-            # Windows
-            homedir = os.environ['USERPROFILE']
-
-        # FIXME: use $prefix defined in setup
-        search_path = ["/usr/local/share/tegaki/engines/",
-                       "/usr/share/tegaki/engines/",
-                       # for Maemo
-                       "/media/mmc1/tegaki/engines/",
-                       "/media/mmc2/tegaki/engines/",
-                       # personal directory
-                       os.path.join(homedir, ".tegaki", "engines"),     
-                       os.path.join(currdir, "engines")]
-
-        if 'TEGAKI_ENGINE_PATH' in os.environ and \
-            os.environ['TEGAKI_ENGINE_PATH'].strip() != "":
-            search_path += os.environ['TEGAKI_ENGINE_PATH'].strip().split(":")
-
-        for directory in search_path:
+        for directory in cls._get_search_path("engines"):
             if not os.path.exists(directory):
                 continue
 
@@ -88,19 +81,32 @@ class Trainer(object):
     def set_options(self, options):
         """
         Process trainer/model specific options.
+
+        @type options: dict
+        @param options: a dict where keys are option names and values are \
+                        option values
         """
         pass
 
     # To be implemented by child class
-    def train(self, character_collection, meta):
+    def train(self, character_collection, meta, path=None):
         """
-        character_collection: a tegaki.character.CharacterCollection object
-        meta: a dictionary containing the following keys
+        Train a model.
+
+        @type character_collection: L{CharacterCollection}
+        @param character_collection: collection containing training data
+
+        @type meta: dict
+        @param meta: meta dict obtained with L{Engine.read_meta_file}
+
+        @type path: str
+        @param path: path to the ouput model \
+                     (if None, the personal directory is assumed)
+
+        The meta dict needs the following keys:
             - name: full name (mandatory)
             - shortname: name with less than 3 characters (mandatory)
             - language: model language (optional)
-        path: path to the ouput model
-              (if None, the personal directory is assumed)
         """
         raise NotImplementedError
 

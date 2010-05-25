@@ -1,0 +1,28 @@
+ibus-tegaki
+===========
+
+Tegaki project integration in ibus.
+
+Requirements
+------------
+
+Python         2.4         http://www.python.org
+ibus           1.2         http://code.google.com/p/ibus/
+tegaki-pygtk   0.3
+
+Install
+-------
+
+($ su)
+# python setup.py install --prefix /usr
+
+License
+-------
+
+This package is distributed under the terms of the GNU General Public
+License. See the COPYING file for more information.
+
+Homepage
+--------
+
+http://www.tegaki.org

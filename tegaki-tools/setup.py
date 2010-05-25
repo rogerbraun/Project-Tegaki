@@ -18,7 +18,9 @@ def getversion():
     eval_ = _getversion('src/tegaki-eval')
     build = _getversion('src/tegaki-build')
     render = _getversion('src/tegaki-render')
-    return max(convert, eval_, build, render)
+    bootstrap = _getversion('src/tegaki-bootstrap')
+    stats = _getversion('src/tegaki-stats')
+    return max(convert, eval_, build, render, bootstrap, stats)
 
 # Please run
 # python setup.py install   
@@ -32,7 +34,8 @@ setup(
     version = getversion(),
     license='GPL',
     scripts = ['src/tegaki-convert', 'src/tegaki-build', 
-               'src/tegaki-eval', 'src/tegaki-render'],
+               'src/tegaki-eval', 'src/tegaki-render',
+               'src/tegaki-bootstrap', 'src/tegaki-stats'],
     packages = ['tegakitools'],
     package_dir = {'tegakitools':'src/tegakitools'}
 )
