@@ -1,0 +1,147 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2009 The Tegaki project contributors
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Contributors to this file:
+# - Mathieu Blondel
+
+import sys
+import os
+import time
+from optparse import OptionParser
+
+from tegaki.character import Character
+from tegaki.recognizer import Recognizer, RecognizerError
+
+VERSION = '0.3.1'
+
+class TegakiEvalError(Exception):
+    pass
+
+class TegakiEval(object):
+
+    def __init__(self, options, args):
+        self._list = options.list
+        self._xml = options.xml[0]
+        if not self._list:
+            self._recognizer = args[0]
+            self._model = args[1]
+
+    def run(self):
+        if self._list:
+            self._list_recognizers()
+        else:
+            self._recognize()
+
+    def _list_recognizers(self):
+        avail_recognizers = Recognizer.get_all_available_models()
+        print "\n".join(["- %s (%s)" % (model, recog) for recog, model, meta \
+                         in avail_recognizers])
+
+    def _recognize(self):
+        char = Character()
+        char.read_string(self._xml) 
+        recognizer_class = self._get_recognizer_class()
+        recognizer = self._get_recognizer(recognizer_class)
+
+        self._eval(recognizer, char)
+
+    def _get_recognizer_class(self):
+        avail_recognizers = Recognizer.get_available_recognizers()
+
+        if not self._recognizer in avail_recognizers:
+            err = "Not an available recognizer!\n"
+            err += "Available ones include: %s" % \
+                ", ".join(avail_recognizers.keys())
+            raise TegakiEvalError, err
+
+        return avail_recognizers[self._recognizer]
+
+    def _get_recognizer(self, recognizer_class):
+        recognizer = recognizer_class()
+        if os.path.exists(self._model):
+            # the path exists so we consider the parameter to be a model path
+            method = recognizer.open
+
+            # try to find a .meta file
+            meta_file = self._model.replace(".model", ".meta")
+            if os.path.exists(meta_file) and meta_file.endswith(".meta"):
+                try:
+                    meta = Recognizer.read_meta_file(meta_file)
+                except RecognizerError, e:
+                    raise TegakiEvalError, str(e) 
+            else:
+                meta = {}
+        else:
+            # otherwise we consider the parameter to be a model name
+            avail_models = recognizer_class.get_available_models()
+            if not self._model in avail_models:
+                err = "Not an available model!\n"
+                err += "Available ones include: %s" % \
+                    ", ".join(["\"%s\"" % k for k in avail_models.keys()])
+                raise TegakiEvalError, err 
+
+            meta = avail_models[self._model]
+            method = recognizer.set_model
+        try:
+            method(self._model)
+            recognizer.set_options(meta)
+        except RecognizerError, e:
+            raise TegakiEvalError, str(e)
+
+        return recognizer
+
+    def _eval(self, recognizer, char):
+
+      cand = recognizer.recognize(char.get_writing(), 
+                                  n=12)
+      for char, prob in cand:
+        print "[\"%s\",\"%f0.2\"]" % (char, prob)
+
+usage = """usage: %prog [options] recognizer model
+
+recognizer        a recognizer available on the system
+
+model             a model name available for that recognizer on the system OR
+                  the direct file path to the model
+"""
+parser = OptionParser(usage=usage, version="%prog " + VERSION)
+
+
+parser.add_option("-x", "--xml",
+                  action="append", type="string", dest="xml",
+                  default=[],
+                  help="One individual XML character given as a string")
+
+
+parser.add_option("-l", "--list",
+                  action="store_true",dest="list", default=False,
+                  help="List available recognizers and models")
+
+
+(options, args) = parser.parse_args()
+
+try:
+    if not options.list and len(args) < 2:
+        raise TegakiEvalError, "Needs a recognizer and a model!"
+
+    TegakiEval(options, args).run()
+except TegakiEvalError, e:
+    sys.stderr.write(str(e) + "\n\n")
+    parser.print_help()
+    sys.exit(1)
