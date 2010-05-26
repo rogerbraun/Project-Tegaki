@@ -52,6 +52,7 @@ class TegakiEval(object):
         self._charcols = options.charcols
         self._tomoe = options.tomoe
         self._kuchibue = options.kuchibue
+        self._kvg = options.kvg
         self._list = options.list
         self._include = options.include
         self._exclude = options.exclude
@@ -78,6 +79,7 @@ class TegakiEval(object):
                          (TYPE_CHARCOL_DB, self._databases),
                          (TYPE_DIRECTORY, self._directories),
                          (TYPE_TOMOE, self._tomoe),
+                         (TYPE_KVG, self._kvg),
                          (TYPE_KUCHIBUE, self._kuchibue)))
 
 
@@ -304,6 +306,10 @@ parser.add_option("-k", "--kuchibue",
                   action="append", type="string", dest="kuchibue",
                   default=[],
                   help="Kuchibue unipen database")
+parser.add_option("-a", "--kanjivg",
+                  action="append", type="string", dest="kvg",
+                  default=[],
+                  help="KanjiVG XML dictionary files")
 
 
 parser.add_option("-l", "--list",

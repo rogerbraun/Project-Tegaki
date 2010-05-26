@@ -28,11 +28,9 @@
 # http://kanjivg.tagaini.net/.
 # Search for "resolution" if you want to control how many points are being
 # created for the tegaki-xml. 
-# I'm not that good at python, so if anything looks strange to you, it may very
-# well be just that. You can see still see the remains of my serious printf-
-# debugging. I'm sorry.
 # Converting the full file takes a lot of time, so be warned.
 # 
+import sys
 
 from tegaki.character import Point, Stroke, Writing, Character, \
                              _XmlBase
@@ -123,7 +121,7 @@ class SVG_Parser:
           self._svg_array = phrase.parseString(self._svg)
           self.make_points()
         except:
-          print "Something went wrong while parsing..."
+          sys.stderr.write("Something went wrong while parsing...\n")
           raise
 
     def resize(self,n):
@@ -197,7 +195,7 @@ class KVGXmlDictionaryReader(_XmlBase):
                   svg_parser.parse()
                   self._stroke.append_points(svg_parser.get_points())
                 except:
-                  print "Something went wrong in this character: " + self._utf8
+                  sys.stderr.write("Something went wrong in this character: " + self._utf8 + "\n")
             else:
                 print "Missing path in <stroke> element: " + self._utf8
 		
