@@ -71,9 +71,14 @@ try:
 
             strokes = writing.get_strokes()
             #check for intersections
-            strokecombo = itertools.combinations(strokes,2)
+            num_strokes = []
+            for i in range(len(strokes)):
+                num_strokes.append([i,strokes[i]])
+            strokecombo = itertools.combinations(num_strokes,2)
+            jamo = []
             for stroke_tuple in strokecombo: 
-                print self.intersects(stroke_tuple[0],stroke_tuple[1])
+                if self.intersects(stroke_tuple[0][1],stroke_tuple[1][1]):
+                    print "Intersection on ", stroke_tuple[0][0], stroke_tuple[1][0]
             
             # recognize    
             for i in range(len(strokes)):
